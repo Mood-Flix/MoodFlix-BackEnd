@@ -9,8 +9,8 @@ import java.util.List;
 
 public interface TmdbReviewRepository extends JpaRepository<TmdbReview, String> {
     List<TmdbReview> findByMovie_Id(Long movieId, Pageable pageable);
-    List<TmdbReview> findTop5ByMovie_IdOrderByIdDesc(Long movieId);
-    long deleteByMovie_Id(Long movieId);
+    List<TmdbReview> findTop5ByMovie_IdOrderByCreatedAtTmdbDesc(Long movieId);
+
     boolean existsById(String id);
 
 }
