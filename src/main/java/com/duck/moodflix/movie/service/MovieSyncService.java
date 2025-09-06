@@ -10,7 +10,7 @@ import com.duck.moodflix.movie.repository.MovieRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Objects;
@@ -25,56 +25,35 @@ public class MovieSyncService {
     private final MovieMapper movieMapper;
     private final KeywordManager keywordManager;
     private final ReviewSyncService reviewSyncService;
+    private final TransactionTemplate tx;
 
-    @Transactional
     public void syncPopularPage1() {
         TMDbMovieListResponse resp = tmdb.getPopular(1);
-        List<MovieBriefDto> briefs = (resp == null || resp.getResults() == null)
-                ? List.of() : resp.getResults();
-
-        if (briefs.isEmpty()) {
-            log.warn("No popular results from TMDb");
-            return;
-        }
+        List<MovieBriefDto> briefs = (resp == null || resp.getResults() == null) ? List.of() : resp.getResults();
+        if (briefs.isEmpty()) { log.warn("No popular results from TMDb"); return; }
 
         int saved = 0;
         for (MovieBriefDto brief : briefs) {
-            // record면 .id(), Lombok면 .getId() 로 바꾸세요.
             Long tmdbId = brief.id();
-            if (tmdbId == null) continue;
-
-            // 성능 최적화: 전체 조회 대신 존재 여부 체크
-            if (movieRepository.existsByTmdbId(tmdbId)) continue;
+            if (tmdbId == null || movieRepository.existsByTmdbId(tmdbId)) continue;
 
             TMDbMovieDetailDto detail = tmdb.getMovieDetail(tmdbId);
-            if (detail == null) {
-                log.warn("Skip: TMDb detail is null. tmdbId={}", tmdbId);
-                continue;
-            }
+            if (detail == null) { log.warn("Skip detail null. tmdbId={}", tmdbId); continue; }
 
-            Movie movie = movieMapper.toEntity(detail);
-            movieRepository.save(movie);
+            Movie movie = tx.execute(status -> {
+                Movie m = movieMapper.toEntity(detail);
+                movieRepository.save(m);
+                var names = (detail.getKeywords()==null || detail.getKeywords().keywords()==null)
+                        ? List.<String>of()
+                        : detail.getKeywords().keywords().stream()
+                        .filter(Objects::nonNull).map(k -> k.name()).filter(Objects::nonNull).distinct().toList();
+                keywordManager.upsert(m, names);
+                return m;
+            });
 
-            List<String> keywordNames = extractKeywordNames(detail);
-            keywordManager.upsert(movie, keywordNames);
-
-            reviewSyncService.syncForMovie(movie);
+            reviewSyncService.syncForMovie(movie); // 트랜잭션 밖
             saved++;
-            log.info("Saved movie: {} ({}) with {} keywords", movie.getTitle(), movie.getTmdbId(), keywordNames.size());
         }
-
         log.info("Movie sync completed. saved={}", saved);
-    }
-
-    private List<String> extractKeywordNames(TMDbMovieDetailDto dto) {
-        if (dto.getKeywords() == null || dto.getKeywords().keywords() == null) return List.of();
-        return dto.getKeywords().keywords().stream()
-                .filter(Objects::nonNull)
-                .map(k -> k.name())
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .distinct()
-                .toList();
     }
 }
