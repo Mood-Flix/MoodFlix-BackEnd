@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,26 +28,21 @@ public class MovieController {
             description = "TMDb에서 인기 영화(1페이지)를 가져와 DB에 저장합니다. (관리자 권한 권장)"
     )
     @SecurityRequirement(name = "Bearer Authentication")
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/sync")
     public ResponseEntity<String> syncMovies() {
         syncService.syncPopularPage1();
         return ResponseEntity.ok("Movie data synchronization completed.");
     }
 
-    @Operation(
-            summary = "전체 영화 목록 조회(요약)",
-            description = "DB에 저장된 영화의 요약 정보를 반환합니다."
-    )
+    @Operation(summary = "전체 영화 목록(요약) 조회")
     @SecurityRequirement(name = "Bearer Authentication")
     @GetMapping
     public ResponseEntity<List<MovieSummaryResponse>> getAllMovies() {
         return ResponseEntity.ok(queryService.getAllMovieSummariesDto());
     }
 
-    @Operation(
-            summary = "특정 영화 상세 조회",
-            description = "ID로 특정 영화의 상세 정보를 반환합니다."
-    )
+    @Operation(summary = "영화 상세 조회")
     @SecurityRequirement(name = "Bearer Authentication")
     @GetMapping("/{id}")
     public ResponseEntity<MovieDetailResponse> getMovieById(@PathVariable Long id) {
