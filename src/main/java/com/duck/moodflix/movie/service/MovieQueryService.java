@@ -87,16 +87,13 @@ public class MovieQueryService {
         }
 
         // 4) DB 저장분 폴백 (createdAtTmdb 내림차순 5개)
-        var stored = reviewRepo.findByMovie_Id(
-                m.getId(),
-                PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "createdAtTmdb"))
-        );
+        var stored = reviewRepo.findTop5ByMovie_IdOrderByCreatedAtTmdbDesc(m.getId());
         var storedMapped = stored.stream()
                 .map(s -> new MovieDetailResponse.ReviewItem(
                         s.getAuthor(),
                         s.getRating(),
                         s.getContent(),
-                        s.getCreatedAt() == null ? null : s.getCreatedAt().toString(),
+                        s.getCreatedAtTmdb() == null ? null : s.getCreatedAtTmdb().toString(),
                         s.getUrl(),
                         null
                 ))
