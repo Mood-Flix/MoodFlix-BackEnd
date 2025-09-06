@@ -11,5 +11,9 @@ import org.springframework.stereotype.Component;
 @Setter
 public class TMDbProperties {
     private String apiKey;
+
+    /** v4 Read Access Token (Bearer) — 있으면 Authorization 헤더에 사용 */
+    private String bearerToken;
+
     private final String posterBaseUrl = "https://image.tmdb.org/t/p/w500";
 }
