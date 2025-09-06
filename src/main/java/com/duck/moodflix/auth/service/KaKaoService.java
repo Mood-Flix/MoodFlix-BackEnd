@@ -9,6 +9,7 @@ import com.duck.moodflix.users.domain.entity.enums.UserStatus;
 import com.duck.moodflix.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -21,8 +22,8 @@ public class KaKaoService {
 
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
-    // WebClient를 Bean으로 주입받거나 직접 생성하여 사용
-    private final WebClient webClient = WebClient.create();
+    @Qualifier("kakaoWebClient")
+    private final WebClient webClient;
 
     @Transactional
     public LoginResponseDto oAuthLogin(String accessToken) {
