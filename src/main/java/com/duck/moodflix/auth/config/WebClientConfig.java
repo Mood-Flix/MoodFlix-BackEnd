@@ -1,23 +1,52 @@
 package com.duck.moodflix.auth.config;
 
+import io.netty.channel.ChannelOption;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
+
+import java.time.Duration;
 
 @Configuration
 public class WebClientConfig {
 
-    @Bean("tmdbWebClient") // (1) TMDb용 WebClient에 "tmdbWebClient" 라는 이름 부여
-    public WebClient tmdbWebClient() {
-        return WebClient.builder()
+    @Bean("tmdbWebClient")
+    public WebClient tmdbWebClient(TMDbProperties tmdbProperties) {
+        HttpClient httpClient = HttpClient.create()
+                .compress(true)
+                .responseTimeout(Duration.ofSeconds(10))
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5_000);
+
+        WebClient.Builder b = WebClient.builder()
                 .baseUrl("https://api.themoviedb.org/3")
-                .build();
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader(HttpHeaders.ACCEPT_ENCODING, "gzip");
+
+        // v4 토큰이 있으면 Authorization 헤더 적용
+        if (tmdbProperties.getBearerToken() != null && !tmdbProperties.getBearerToken().isBlank()) {
+            b.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + tmdbProperties.getBearerToken());
+        }
+
+        return b.build();
     }
 
-    @Bean("kakaoWebClient") // (2) 카카오용 WebClient에 "kakaoWebClient" 라는 이름 부여
+    @Bean("kakaoWebClient")
     public WebClient kakaoWebClient() {
+        HttpClient httpClient = HttpClient.create()
+                .compress(true)
+                .responseTimeout(Duration.ofSeconds(10))
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5_000);
+
         return WebClient.builder()
                 .baseUrl("https://kapi.kakao.com")
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader(HttpHeaders.ACCEPT_ENCODING, "gzip")
                 .build();
     }
 }
