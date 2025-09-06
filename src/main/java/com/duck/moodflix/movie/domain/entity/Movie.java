@@ -5,20 +5,15 @@ import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
+@Entity
+@Table(name = "movies")
 @Getter
 @Setter
-@Entity
-@Table(
-        name = "movies",
-        indexes = {
-                @Index(name = "ux_movies_tmdb_id", columnList = "tmdb_id", unique = true)
-        }
-)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@AllArgsConstructor
 @Builder
 public class Movie {
 
@@ -26,7 +21,7 @@ public class Movie {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "tmdb_id", nullable = false, unique = true)
+    @Column(nullable = false, unique = true)
     private Long tmdbId;
 
     @Column(length = 255, nullable = false)
@@ -39,42 +34,32 @@ public class Movie {
     private String posterUrl;
 
     @Column(length = 100)
-    private String genre;          // 대표 장르(요약 저장)
+    private String genre;
 
     private LocalDate releaseDate;
 
-    private Double voteAverage;    // TMDb 평점 요약
+    private Double voteAverage;
 
-    // 키워드 연결(N:M 조인 엔티티)
     @OneToMany(mappedBy = "movie", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    @Builder.Default
-    private Set<MovieKeyword> movieKeywords = new HashSet<>();
+    private Set<MovieKeyword> movieKeywords = new LinkedHashSet<>();
 
-    @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
-
-    @Column(nullable = false)
     private LocalDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = this.createdAt;
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
     }
 
     @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
     }
 
-    // 연관관계 편의 메서드(선택)
-    public void addMovieKeyword(MovieKeyword mk) {
-        this.movieKeywords.add(mk);
-        mk.setMovie(this);
-    }
-
+    /** 관계 해제: orphanRemoval=true 에 맡김 */
     public void removeMovieKeyword(MovieKeyword mk) {
         this.movieKeywords.remove(mk);
-        mk.setMovie(null);
+        // mk.setMovie(null);  // nullable=false이므로 null 세팅하지 않음
     }
 }
