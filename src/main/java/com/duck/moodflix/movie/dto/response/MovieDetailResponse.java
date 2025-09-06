@@ -40,7 +40,7 @@ public record MovieDetailResponse(
     @Schema(description="이미지")            public record ImageItem(String url, Integer width, Integer height, Double aspectRatio) {}
     @Schema(description="출연")              public record CastItem(String name, String character, String profileUrl, Integer order) {}
     @Schema(description="제작")              public record CrewItem(String name, String job, String profileUrl) {}
-    @Schema(description="연관작")            public record RelatedItem(Long tmdbId, String title, String posterUrl, String releaseDate) {}
+    @Schema(description="연관작")            public record RelatedItem(Long tmdbId, String title, String posterUrl, java.time.LocalDate releaseDate) {}
     @Schema(description="리뷰 요약")          public record ReviewItem(
             String author, Double rating, String content, String createdAt, String url, String avatarUrl
     ) {}
