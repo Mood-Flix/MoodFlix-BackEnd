@@ -5,32 +5,36 @@ import com.duck.moodflix.movie.dto.tmdb.releases.ReleaseDateItemDto;
 import org.springframework.stereotype.Component;
 
 import java.util.Comparator;
+import java.util.stream.Stream;
 
 @Component
 public class CertificationExtractor {
 
-    public static String extract(TMDbMovieDetailDto d) {
+    public String extract(TMDbMovieDetailDto d) {
+        if (d == null) return null; // ← null guard
+
         String c = forIso(d, "KR");
         if (c == null) c = forIso(d, "US");
         if (c == null && d.getReleaseDates() != null && d.getReleaseDates().getResults() != null) {
             return d.getReleaseDates().getResults().stream()
                     .flatMap(r -> r.getReleaseDates() == null
-                            ? java.util.stream.Stream.<ReleaseDateItemDto>empty()
+                            ? Stream.<ReleaseDateItemDto>empty()
                             : r.getReleaseDates().stream())
                     .map(ReleaseDateItemDto::getCertification)
                     .filter(s -> s != null && !s.isBlank())
-                    .findFirst().orElse(null);
+                    .findFirst()
+                    .orElse(null);
         }
         return c;
     }
 
-    private static String forIso(TMDbMovieDetailDto d, String iso2) {
+    private String forIso(TMDbMovieDetailDto d, String iso2) {
         if (d.getReleaseDates() == null || d.getReleaseDates().getResults() == null) return null;
         return d.getReleaseDates().getResults().stream()
                 .filter(r -> iso2.equalsIgnoreCase(r.getIso31661()))
                 .findFirst()
                 .flatMap(r -> (r.getReleaseDates() == null
-                        ? java.util.stream.Stream.<ReleaseDateItemDto>empty()
+                        ? Stream.<ReleaseDateItemDto>empty()
                         : r.getReleaseDates().stream())
                         .sorted(Comparator.comparingInt(x -> x.getType() == null ? 99 : x.getType()))
                         .map(ReleaseDateItemDto::getCertification)
