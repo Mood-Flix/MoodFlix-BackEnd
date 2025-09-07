@@ -9,7 +9,12 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 @Entity
-@Table(name = "movies")
+@Table(
+        name = "movies",
+        indexes = {
+                @Index(name = "idx_movies_tmdb_id", columnList = "tmdb_id", unique = true)
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -17,30 +22,28 @@ import java.util.Set;
 @Builder
 public class Movie {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "tmdb_id", nullable = false, unique = true)
     private Long tmdbId;
 
-    @Column(length = 255, nullable = false)
+    @Column(nullable = false)
     private String title;
 
     @Column(columnDefinition = "TEXT")
     private String overview;
 
-    @Column(length = 255)
     private String posterUrl;
 
-    @Column(length = 100)
-    private String genre;
-
     private LocalDate releaseDate;
+
+    private String genre;
 
     private Double voteAverage;
 
     @OneToMany(mappedBy = "movie", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @Builder.Default
     private Set<MovieKeyword> movieKeywords = new LinkedHashSet<>();
 
     private LocalDateTime createdAt;
