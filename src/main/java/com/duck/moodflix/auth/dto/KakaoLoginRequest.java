@@ -17,3 +17,4 @@ public class KakaoLoginRequest {
     @JsonAlias({"accessToken", "access_token"})
     private String accessToken;
 }
+
