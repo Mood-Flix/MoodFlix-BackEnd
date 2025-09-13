@@ -42,6 +42,9 @@ public class Movie {
 
     private Double voteAverage;
 
+    @Column(name = "adult", nullable = false)
+    private boolean adult;
+
     @OneToMany(mappedBy = "movie", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private Set<MovieKeyword> movieKeywords = new LinkedHashSet<>();
