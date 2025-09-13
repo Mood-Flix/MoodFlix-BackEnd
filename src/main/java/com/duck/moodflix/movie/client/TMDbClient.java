@@ -121,8 +121,19 @@ public class TMDbClient {
                                 .queryParam("primary_release_year", year)
                                 .queryParam("page", page)
                 ))
-                .retrieve()
+                 .retrieve()
+                 .onStatus(s -> s.value() == 429, rsp -> {
+                  log.warn("TMDb rate limited: GET /discover/movie year={} page={}", year, page);
+                   return rsp.createException();
+                })
+                .onStatus(s -> s.is5xxServerError(), rsp -> rsp.createException())
                 .bodyToMono(TMDbMovieListResponse.class)
+                .timeout(Duration.ofSeconds(6))
+                .retryWhen(
+                        Retry.backoff(3, Duration.ofMillis(500))
+                            .filter(ex -> ex instanceof WebClientResponseException.TooManyRequests
+                                    || ex instanceof java.util.concurrent.TimeoutException)
+                )
                 .block();
     }
 
