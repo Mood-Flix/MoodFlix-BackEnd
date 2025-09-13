@@ -9,7 +9,6 @@ import lombok.*;
         indexes = {
                 @Index(name = "idx_keywords_name", columnList = "name")
         }
-        // uniqueConstraints 제거: name 충돌 위험 방지
 )
 @Getter
 @Setter
