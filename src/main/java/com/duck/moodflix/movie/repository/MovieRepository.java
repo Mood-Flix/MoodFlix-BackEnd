@@ -1,6 +1,8 @@
 package com.duck.moodflix.movie.repository;
 
 import com.duck.moodflix.movie.domain.entity.Movie;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -17,4 +19,6 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
     Optional<Movie> findByTmdbId(Long tmdbId);
 
     boolean existsByTmdbId(Long tmdbId);
+
+    Page<Movie> findByAdultFalse(Pageable pageable);
 }
