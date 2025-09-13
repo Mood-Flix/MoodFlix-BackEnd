@@ -9,8 +9,8 @@ import com.duck.moodflix.movie.mapper.MovieDetailAssembler;
 import com.duck.moodflix.movie.repository.MovieRepository;
 import com.duck.moodflix.movie.repository.TmdbReviewRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,12 +25,14 @@ public class MovieQueryService {
     private final MovieDetailAssembler detailAssembler;  // 상세 응답 조립
     private final TmdbReviewRepository reviewRepo;       // 리뷰 폴백
 
-    /** 목록: 요약 DTO 리스트 반환 */
+    /** ✅ 페이징 요약 조회 */
     @Transactional(readOnly = true)
-    public List<MovieSummaryResponse> getAllMovieSummariesDto() {
-        return movieRepository.findAll().stream()
-                .map(this::toSummary)
-                .toList();
+    public Page<MovieSummaryResponse> getMovieSummaries(Pageable pageable, boolean includeAdult) {
+        Page<Movie> pg = includeAdult
+                ? movieRepository.findAll(pageable)
+                : movieRepository.findByAdultFalse(pageable);
+
+        return pg.map(this::toSummary);
     }
 
     private MovieSummaryResponse toSummary(Movie m) {
