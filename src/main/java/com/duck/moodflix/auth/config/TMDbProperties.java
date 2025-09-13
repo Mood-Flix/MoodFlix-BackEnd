@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "tmdb")
 @Getter
 @Setter
-public class TMDbProperties {
+public class TmdbProperties {
     private String apiKey;
 
     /** v4 Read Access Token (Bearer) — 있으면 Authorization 헤더에 사용 */
