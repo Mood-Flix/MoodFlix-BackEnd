@@ -1,6 +1,6 @@
 package com.duck.moodflix.movie.client;
 
-import com.duck.moodflix.auth.config.TmdbProperties;
+import com.duck.moodflix.auth.config.TMDbProperties;
 import com.duck.moodflix.movie.dto.tmdb.TMDbMovieDetailDto;
 import com.duck.moodflix.movie.dto.tmdb.TMDbMovieListResponse;
 import com.duck.moodflix.movie.dto.tmdb.reviews.ReviewsPageDto;
@@ -21,10 +21,10 @@ import java.time.Duration;
 public class TMDbClient {
 
     private final WebClient webClient;
-    private final TmdbProperties tmdbProperties;
+    private final TMDbProperties tmdbProperties;
 
     public TMDbClient(@Qualifier("tmdbWebClient") WebClient webClient,
-                      TmdbProperties tmdbProperties) {
+                      TMDbProperties tmdbProperties) {
         this.webClient = webClient;
         this.tmdbProperties = tmdbProperties;
     }

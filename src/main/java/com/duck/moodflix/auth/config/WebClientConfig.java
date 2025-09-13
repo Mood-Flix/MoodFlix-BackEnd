@@ -16,7 +16,7 @@ import java.time.Duration;
 public class WebClientConfig {
 
     @Bean("tmdbWebClient")
-    public WebClient tmdbWebClient(TmdbProperties tmdbProperties) {
+    public WebClient tmdbWebClient(TMDbProperties tmdbProperties) {
         HttpClient httpClient = HttpClient.create()
                 .compress(true)
                 .responseTimeout(Duration.ofSeconds(10))

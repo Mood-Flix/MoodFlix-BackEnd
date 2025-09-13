@@ -1,6 +1,6 @@
 package com.duck.moodflix.movie.mapper;
 
-import com.duck.moodflix.auth.config.TmdbProperties;
+import com.duck.moodflix.auth.config.TMDbProperties;
 import com.duck.moodflix.movie.domain.entity.Movie;
 import com.duck.moodflix.movie.dto.tmdb.TMDbMovieDetailDto;
 import com.duck.moodflix.movie.util.AgeRatingDecider;
@@ -14,7 +14,7 @@ import java.time.LocalDate;
 @RequiredArgsConstructor
 public class MovieMapper {
 
-    private final TmdbProperties props;
+    private final TMDbProperties props;
     private final CertificationExtractor certExtractor;
 
     /** 기존 한-인자 호출을 위해 오버로드 추가 */
