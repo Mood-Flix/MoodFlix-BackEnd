@@ -69,6 +69,9 @@ public class TMDbMovieDetailDto {
     @JsonProperty("popularity")
     private Double popularity;
 
+    @JsonProperty("Adult")
+    private String Adult;
+
     // ===== 생산/통계 =====
     @JsonProperty("budget")
     private Long budget;
