@@ -55,9 +55,6 @@ public class UserService {
         if (user.getStatus() == UserStatus.DELETED) {
             return;
         }
-
-        // [수정] 비밀번호 검증 로직 전체 제거
-        user.deleteAccount();
     }
 
     private User findUserById(Long userId) {

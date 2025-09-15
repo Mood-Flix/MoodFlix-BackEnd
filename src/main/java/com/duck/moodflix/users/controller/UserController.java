@@ -41,11 +41,9 @@ public class UserController {
 
     @Operation(summary = "회원 탈퇴 (계정 삭제)", description = "로그인된 사용자의 계정을 삭제합니다.")
     @DeleteMapping // 엔드포인트 경로 유지 (DELETE /users)
-    public ResponseEntity<Map<String, String>> deleteAccount(
-            @AuthenticationPrincipal UserDetails userDetails,
-            @Validated @RequestBody DeleteAccountRequest dto) {
+    public ResponseEntity<Map<String, String>> deleteMyAccount(@AuthenticationPrincipal UserDetails userDetails) {
         Long userId = Long.parseLong(userDetails.getUsername());
-        userService.deleteAccount(userId);
+        userService.deleteAccount(userId); // [수정] password 전달 제거
         return ResponseEntity.ok(Map.of("message", "계정 삭제가 완료되었습니다."));
     }
 }
