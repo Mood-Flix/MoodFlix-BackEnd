@@ -31,9 +31,6 @@ public class User {
     @Column(nullable = false, length = 100)
     private String email;
 
-    // 자체회원가입이면 hash된 패스워드, 소셜계정은 null
-    @Column(length = 255)
-    private String password;
 
     @Column(nullable = false, length = 50)
     private String name;
@@ -98,13 +95,7 @@ public class User {
         this.birthDate = birthDate;
         this.gender = gender;
         this.profileImage = profileImage;
-    }
-
-    /**
-     * 비밀번호를 변경합니다. (암호화된 비밀번호를 받음)
-     */
-    public void changePassword(String encryptedPassword) {
-        this.password = encryptedPassword;
+        this.updatedAt = LocalDateTime.now();
     }
 
 
@@ -117,7 +108,6 @@ public class User {
         this.email = "deleted_" + this.userId + "@deleted.local";
         this.name = "탈퇴한사용자";
         this.kakaoId = null; // ✅ [추가] 재가입을 위한 kakaoId 해제
-        this.password = null;
         this.deleted = true; // [추가] deleted 플래그 업데이트
     }
 }

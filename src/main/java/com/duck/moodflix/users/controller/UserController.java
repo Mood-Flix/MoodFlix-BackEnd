@@ -39,23 +39,11 @@ public class UserController {
         return ResponseEntity.ok(updatedResult);
     }
 
-    @Operation(summary = "비밀번호 변경", description = "로그인된 사용자의 비밀번호를 변경합니다.")
-    @PutMapping("/password") // 엔드포인트 경로 유지
-    public ResponseEntity<Map<String, String>> changePassword(
-            @AuthenticationPrincipal UserDetails userDetails,
-            @Validated @RequestBody ChangePasswordRequest dto) {
-        Long userId = Long.parseLong(userDetails.getUsername());
-        userService.changePassword(userId, dto);
-        return ResponseEntity.ok(Map.of("message", "비밀번호가 변경되었습니다."));
-    }
-
     @Operation(summary = "회원 탈퇴 (계정 삭제)", description = "로그인된 사용자의 계정을 삭제합니다.")
     @DeleteMapping // 엔드포인트 경로 유지 (DELETE /users)
-    public ResponseEntity<Map<String, String>> deleteAccount(
-            @AuthenticationPrincipal UserDetails userDetails,
-            @Validated @RequestBody DeleteAccountRequest dto) {
+    public ResponseEntity<Map<String, String>> deleteMyAccount(@AuthenticationPrincipal UserDetails userDetails) {
         Long userId = Long.parseLong(userDetails.getUsername());
-        userService.deleteAccount(userId, dto.getPassword());
+        userService.deleteAccount(userId); // [수정] password 전달 제거
         return ResponseEntity.ok(Map.of("message", "계정 삭제가 완료되었습니다."));
     }
 }
