@@ -17,6 +17,7 @@ replay_pid*
 # -----------------
 # Build / Caches
 # -----------------
+/.gradle/
 .gradle/
 gradle/
 /gradle/        # gradle 폴더 전체를 무시하지 않으려면 이 줄을 지우세요 (wrapper 예외는 아래에 있음)
@@ -28,6 +29,8 @@ build/
 # -----------------
 # IntelliJ & JetBrains
 # -----------------
+.idea
+.gradle
 .idea/
 *.iws
 .idea_modules/
