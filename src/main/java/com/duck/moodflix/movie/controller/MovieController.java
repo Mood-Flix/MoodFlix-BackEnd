@@ -97,7 +97,9 @@ public class MovieController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        Pageable pageable = PageRequest.of(page, size);
+        int p = Math.max(0, page);
+        int s = Math.min(100, Math.max(1, size)); // 1~100 가드
+        Pageable pageable = PageRequest.of(p, s);
         Page<MovieDoc> resultPage = movieSearchService.search(q, pageable);
         return ResponseEntity.ok(PageDto.from(resultPage));
     }
