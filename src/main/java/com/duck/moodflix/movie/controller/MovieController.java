@@ -105,6 +105,9 @@ public class MovieController {
     }
 
     // 이미 DB에 들어있는 영화 색인 용도
+    @Operation(summary = "ES 전체 재색인 (관리자 전용)")
+    @SecurityRequirement(name = "Bearer Authentication")
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/reindex")
     public String reindex() {
         int page = 0, batch = 500, total = 0;
