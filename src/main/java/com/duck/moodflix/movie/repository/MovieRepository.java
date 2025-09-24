@@ -4,6 +4,8 @@ import com.duck.moodflix.movie.domain.entity.Movie;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
@@ -21,4 +23,26 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
     boolean existsByTmdbId(Long tmdbId);
 
     Page<Movie> findByAdultFalse(Pageable pageable);
+
+    @Query("""
+select distinct m
+from Movie m
+left join m.movieKeywords mk
+left join mk.keyword k
+left join Credit c on c.movie = m
+left join c.person p
+where
+  (:includeAdult = true or m.adult = false)
+  and (
+      :q is null
+      or TRIM(:q) = ''
+      or lower(m.title) like lower(concat('%', :q, '%'))
+      or lower(m.genre) like lower(concat('%', :q, '%'))
+      or lower(k.name) like lower(concat('%', :q, '%'))
+      or lower(p.name) like lower(concat('%', :q, '%'))
+  )
+""")
+    Page<Movie> searchByText(@Param("q") String q,
+                             @Param("includeAdult") boolean includeAdult,
+                             Pageable pageable);
 }

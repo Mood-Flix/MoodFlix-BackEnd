@@ -1,10 +1,12 @@
 package com.duck.moodflix.movie.controller;
 
 import com.duck.moodflix.movie.domain.entity.Movie;
+import com.duck.moodflix.movie.dto.PageDto;
 import com.duck.moodflix.movie.dto.response.MovieDetailResponse;
 import com.duck.moodflix.movie.dto.response.MovieSummaryResponse;
 import com.duck.moodflix.movie.repository.MovieRepository;
 import com.duck.moodflix.movie.search.MovieDoc;
+import com.duck.moodflix.movie.service.MovieIndexService;
 import com.duck.moodflix.movie.service.MovieQueryService;
 import com.duck.moodflix.movie.service.MovieSearchService;
 import com.duck.moodflix.movie.service.MovieSyncService;
@@ -12,9 +14,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.antlr.v4.runtime.misc.LogManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +37,8 @@ public class MovieController {
     private final MovieQueryService queryService;
     private final MovieRepository movieRepository;
     private final MovieSearchService movieSearchService;
+    private final ElasticsearchOperations esOps;
+    private final MovieIndexService movieIndexService;
 
     @Operation(
             summary = "TMDb 영화 정보 동기화",
@@ -83,25 +89,32 @@ public class MovieController {
         return ResponseEntity.ok(queryService.getMovieDetailResponse(id));
     }
 
-    // 자동완성(글자 칠 때마다)
-    @Operation(summary = "자동 완성", description = "글자를 칠 때마다 자동완성하는 기능")
-    @SecurityRequirement(name = "Bearer Authentication")
-    @GetMapping("/suggest")
-    public ResponseEntity<List<MovieDoc>> suggest(
-            @RequestParam(required = false) String q,
-            @RequestParam(defaultValue = "10") int limit) {
-        return ResponseEntity.ok(movieSearchService.suggest(q, limit));
-    }
-
     @Operation(summary = "영화 검색", description = "제목/키워드/장르로 전체 텍스트 검색")
     @SecurityRequirement(name = "Bearer Authentication")
     @GetMapping("/search")
-    public ResponseEntity<Page<MovieDoc>> search(
+    public ResponseEntity<PageDto<MovieDoc>> search(
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+
         Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(movieSearchService.search(q, pageable));
+        Page<MovieDoc> resultPage = movieSearchService.search(q, pageable);
+        return ResponseEntity.ok(PageDto.from(resultPage));
     }
+
+    // 이미 DB에 들어있는 영화 색인 용도
+    @PostMapping("/reindex")
+    public String reindex() {
+        int page = 0, batch = 500, total = 0;
+        while (true) {
+            var p = movieRepository.findAll(org.springframework.data.domain.PageRequest.of(page, batch));
+            if (!p.hasContent()) break;
+            movieIndexService.indexMovies(p.getContent());
+            total += p.getNumberOfElements();
+            page++;
+        }
+        return "reindexed: " + total;
+    }
+
 
 }

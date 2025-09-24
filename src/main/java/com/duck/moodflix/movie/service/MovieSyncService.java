@@ -12,8 +12,8 @@ import com.duck.moodflix.movie.util.CertificationExtractor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -28,6 +28,7 @@ public class MovieSyncService {
     private final KeywordManager keywordManager;
     private final ReviewSyncService reviewSyncService;
     private final CertificationExtractor certExtractor;
+    private final MovieIndexService movieIndexService; // ES 색인 서비스
 
     /** 인기 영화 모든 페이지 동기화(한글 제목 지원 + 성인/등급/예산/흥행/개요 필터) */
     public int syncAllPopular() {
@@ -43,52 +44,37 @@ public class MovieSyncService {
                 break;
             }
 
-            // 🔹 페이지 단위 카운터 (매 페이지마다 리셋)
-            int savedPage = 0;
-            int skipExist = 0;
-            int skipAdult = 0;
-            int skipNoKo = 0;
-            int skipNoOverview = 0;
-            int skipMetaMissing = 0;
-            int skipError = 0;
+            int savedPage = 0, skipExist = 0, skipAdult = 0, skipNoKo = 0,
+                    skipNoOverview = 0, skipMetaMissing = 0, skipError = 0;
+
+            // 이번 페이지에서 DB에 저장된 영화들을 모아두기 → 벌크 색인
+            List<Movie> savedThisPage = new ArrayList<>();
 
             for (MovieBriefDto brief : briefs) {
                 Long tmdbId = brief.id();
                 if (tmdbId == null) { skipError++; continue; }
 
                 try {
-                    // 1) 이미 저장된 영화
-                    if (movieRepository.existsByTmdbId(tmdbId)) {
-                        skipExist++;
-                        continue;
-                    }
+                    // 1) 중복 스킵
+                    if (movieRepository.existsByTmdbId(tmdbId)) { skipExist++; continue; }
 
-                    // 2) 상세 조회
+                    // 2) 상세 조회(ko-KR)
                     TMDbMovieDetailDto d = tmdb.getMovieDetail(tmdbId);
                     if (d == null) { skipError++; continue; }
 
-                    // 3) 성인물 필터 (TMDb adult + 등급 기반)
+                    // 3) 성인물 필터 (TMDb 성인 플래그 + 등급 기반)
                     boolean adult = Boolean.TRUE.equals(d.getAdult());
                     String cert = null;
                     if (!adult) {
                         cert = certExtractor.extract(d);
-                        if (AgeRatingDecider.isAdultCert(cert)) {
-                            adult = true;
-                        }
+                        if (AgeRatingDecider.isAdultCert(cert)) adult = true;
                     }
-                    if (adult) {
-                        skipAdult++;
-                        continue;
-                    }
+                    if (adult) { skipAdult++; continue; }
 
-                    // 4) 한글 번역 여부 필터 (메서드가 있다면 사용)
-                    //    없으면 d.getTitle()이 한글인지 검사 등의 대안 사용 가능
-                    if (!tmdb.hasKoreanTranslation(tmdbId)) {
-                        skipNoKo++;
-                        continue;
-                    }
+                    // 4) 한글 번역 여부 필터
+                    if (!tmdb.hasKoreanTranslation(tmdbId)) { skipNoKo++; continue; }
 
-                    // 5) overview (ko → en 폴백) 없으면 스킵
+                    // 5) overview (ko → en 폴백) 필수
                     String ko = d.getOverview();
                     String en = null;
                     if (ko == null || ko.isBlank()) {
@@ -98,25 +84,21 @@ public class MovieSyncService {
                         }
                     }
                     if ((ko == null || ko.isBlank()) && (en == null || en.isBlank())) {
-                        skipNoOverview++;
-                        continue;
+                        skipNoOverview++; continue;
                     }
 
-                    // 6) 메타데이터(등급/예산/흥행) 미상 스킵
+                    // 6) 메타데이터(등급/예산/흥행) 필수
                     boolean missing =
                             (cert == null || cert.isBlank()) ||
                                     (d.getBudget() == null || d.getBudget() == 0) ||
                                     (d.getRevenue() == null || d.getRevenue() == 0);
-                    if (missing) {
-                        skipMetaMissing++;
-                        continue;
-                    }
+                    if (missing) { skipMetaMissing++; continue; }
 
                     // 7) 저장
                     Movie movie = movieMapper.toEntity(d, en);
                     movieRepository.save(movie);
 
-                    // 키워드/리뷰 등 후처리 (필요 시)
+                    // 8) 키워드/리뷰 후처리
                     var keywordNames = (d.getKeywords()==null || d.getKeywords().keywords()==null)
                             ? List.<String>of()
                             : d.getKeywords().keywords().stream()
@@ -126,19 +108,29 @@ public class MovieSyncService {
                     keywordManager.upsert(movie, keywordNames);
                     reviewSyncService.syncForMovie(movie);
 
+                    savedThisPage.add(movie);
                     savedPage++;
+
                 } catch (Exception e) {
                     skipError++;
                     log.warn("Skip by exception. tmdbId={}, msg={}", tmdbId, e.getMessage());
                 }
             }
 
-            // 🔹 페이지 요약 로그 + 총계 누적
+            // 9) 페이지 끝에서 ES 벌크 색인
+            if (!savedThisPage.isEmpty()) {
+                try {
+                    movieIndexService.indexMovies(savedThisPage);
+                    log.info("indexed to ES: page={}, count={}", page, savedThisPage.size());
+                } catch (Exception ex) {
+                    log.error("ES indexing failed. page={}, err={}", page, ex.toString());
+                }
+            }
+
             log.info("popular page={} result: saved={}, exist={}, adult={}, noKo={}, noOverview={}, metaMissing={}, error={}",
                     page, savedPage, skipExist, skipAdult, skipNoKo, skipNoOverview, skipMetaMissing, skipError);
             savedTotal += savedPage;
 
-            // 다음 페이지 계산 (TMDb 인기 리스트는 최대 500페이지 캡 고려)
             Integer totalPages = resp.getTotalPages();
             int last = (totalPages == null || totalPages <= 0) ? 500 : Math.min(totalPages, 500);
             if (page >= last) {
@@ -152,7 +144,7 @@ public class MovieSyncService {
         return savedTotal;
     }
 
-
+    /** 연도 범위로 Discover 동기화(+필터) */
     public int syncDiscoverByYearRange(int fromYear, int toYear) {
         int savedTotal = 0;
         int start = Math.min(fromYear, toYear);
@@ -168,8 +160,10 @@ public class MovieSyncService {
                     break;
                 }
 
-                // 페이지 단위 카운터(선택)
                 int savedPage = 0, skipExist=0, skipAdult=0, skipNoKo=0, skipNoOverview=0, skipMetaMissing=0, skipErr=0;
+
+                // 이번 페이지에서 저장된 영화 모아서 색인
+                List<Movie> savedThisPage = new ArrayList<>();
 
                 for (var brief : briefs) {
                     Long tmdbId = brief.id();
@@ -181,7 +175,6 @@ public class MovieSyncService {
                         TMDbMovieDetailDto d = tmdb.getMovieDetail(tmdbId); // ko-KR
                         if (d == null) { skipErr++; continue; }
 
-                        // 성인 필터 (TMDb 플래그 + 등급 판정)
                         boolean adult = Boolean.TRUE.equals(d.getAdult());
                         String cert = null;
                         if (!adult) {
@@ -190,29 +183,21 @@ public class MovieSyncService {
                         }
                         if (adult) { skipAdult++; continue; }
 
-                        if (!tmdb.hasKoreanTranslation(tmdbId)) {
-                            skipNoKo++;
-                            continue;
-                        }
+                        if (!tmdb.hasKoreanTranslation(tmdbId)) { skipNoKo++; continue; }
 
-                        // overview(ko→en 폴백) 없으면 스킵
                         String ko = d.getOverview();
                         String en = null;
                         if (ko == null || ko.isBlank()) {
                             var dEn = tmdb.getMovieDetail(tmdbId, "en-US");
                             if (dEn != null && dEn.getOverview()!=null && !dEn.getOverview().isBlank()) en = dEn.getOverview();
                         }
-                        if ((ko == null || ko.isBlank()) && (en == null || en.isBlank())) {
-                            skipNoOverview++; continue;
-                        }
+                        if ((ko == null || ko.isBlank()) && (en == null || en.isBlank())) { skipNoOverview++; continue; }
 
-                        // 메타(등급/예산/흥행) 미상 스킵
                         boolean missing = (cert == null || cert.isBlank())
                                 || (d.getBudget()==null || d.getBudget()==0)
                                 || (d.getRevenue()==null || d.getRevenue()==0);
                         if (missing) { skipMetaMissing++; continue; }
 
-                        // 저장
                         Movie movie = movieMapper.toEntity(d, en);
                         movieRepository.save(movie);
 
@@ -225,10 +210,23 @@ public class MovieSyncService {
                         keywordManager.upsert(movie, keywordNames);
 
                         reviewSyncService.syncForMovie(movie);
+
+                        savedThisPage.add(movie);
                         savedPage++;
+
                     } catch (Exception e) {
                         skipErr++;
                         log.warn("discover sync skip by exception. tmdbId={}, msg={}", tmdbId, e.getMessage());
+                    }
+                }
+
+                // 페이지 끝에서 ES 벌크 색인
+                if (!savedThisPage.isEmpty()) {
+                    try {
+                        movieIndexService.indexMovies(savedThisPage);
+                        log.info("indexed to ES (discover): year={}, page={}, count={}", year, page, savedThisPage.size());
+                    } catch (Exception ex) {
+                        log.error("ES indexing failed (discover). year={}, page={}, err={}", year, page, ex.toString());
                     }
                 }
 
@@ -245,5 +243,4 @@ public class MovieSyncService {
         log.info("discover sync completed. years {}~{}, saved={}", start, end, savedTotal);
         return savedTotal;
     }
-
 }

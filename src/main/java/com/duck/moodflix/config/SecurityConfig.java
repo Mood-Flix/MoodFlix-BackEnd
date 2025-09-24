@@ -31,6 +31,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // 🔽 OPTIONS 메서드에 대한 요청은 인증 없이 모두 허용합니다. (CORS Preflight 요청 처리)
+                        .requestMatchers("/api/movies/search").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/", "/index.html", "/error", "/favicon.ico",
                                 "/css/**", "/js/**", "/images/**", "/assets/**").permitAll()
