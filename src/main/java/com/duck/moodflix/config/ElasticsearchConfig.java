@@ -57,7 +57,9 @@ public class ElasticsearchConfig {
 
             // 3) (개발용) HTTPS일 때만 trust-all SSLContext 준비
             SSLContext trustAllSsl;
-            if ("https".equalsIgnoreCase(scheme)) {
+            String verificationMode = System.getProperty("spring.elasticsearch.ssl.verification-mode",
+                    System.getenv().getOrDefault("SPRING_ELASTICSEARCH_SSL_VERIFICATION_MODE", "full"));
+            if ("https".equalsIgnoreCase(scheme) && "none".equalsIgnoreCase(verificationMode)) {
                 TrustManager[] trustAll = new TrustManager[]{
                         new X509TrustManager() {
                             public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
@@ -65,7 +67,7 @@ public class ElasticsearchConfig {
                             public void checkServerTrusted(X509Certificate[] certs, String authType) {}
                         }
                 };
-                trustAllSsl = SSLContext.getInstance("TLS");
+                trustAllSsl = SSLContext.getInstance("TLSv1.2");
                 trustAllSsl.init(null, trustAll, new java.security.SecureRandom());
             } else {
                 trustAllSsl = null;
