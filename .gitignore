@@ -13,7 +13,6 @@ hs_err_pid*
 replay_pid*
 *.ctxt
 **.iml
-**.xml
 
 # -----------------
 # Build / Caches
@@ -61,6 +60,7 @@ gradle/
 .idea/**/httpRequests
 .idea/codestream.xml
 .idea/**/replstate.xml
+.idea/**/*.xml
 
 # -----------------
 # Node (프론트 있을 경우)
