@@ -24,24 +24,45 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
 
     Page<Movie> findByAdultFalse(Pageable pageable);
 
-    @Query("""
-select distinct m
-from Movie m
-left join m.movieKeywords mk
-left join mk.keyword k
-left join Credit c on c.movie = m
-left join c.person p
-where
-  (:includeAdult = true or m.adult = false)
-  and (
-      :q is null
-      or TRIM(:q) = ''
-      or lower(m.title) like lower(concat('%', :q, '%'))
-      or lower(m.genre) like lower(concat('%', :q, '%'))
-      or lower(k.name) like lower(concat('%', :q, '%'))
-      or lower(p.name) like lower(concat('%', :q, '%'))
-  )
-""")
+
+    @Query(
+            value = """
+            select distinct m
+            from Movie m
+            left join m.movieKeywords mk
+            left join mk.keyword k
+            left join Credit c on c.movie = m
+            left join c.person p
+            where
+              (:includeAdult = true or m.adult = false)
+              and (
+                  :q is null
+                  or TRIM(:q) = ''
+                  or lower(m.title) like lower(concat('%', :q, '%'))
+                  or lower(m.genre) like lower(concat('%', :q, '%'))
+                  or lower(k.name) like lower(concat('%', :q, '%'))
+                  or lower(p.name) like lower(concat('%', :q, '%'))
+              )
+        """,
+            countQuery = """
+            select count(distinct m.id)
+            from Movie m
+            left join m.movieKeywords mk
+            left join mk.keyword k
+            left join Credit c on c.movie = m
+            left join c.person p
+            where
+              (:includeAdult = true or m.adult = false)
+              and (
+                  :q is null
+                  or TRIM(:q) = ''
+                  or lower(m.title) like lower(concat('%', :q, '%'))
+                  or lower(m.genre) like lower(concat('%', :q, '%'))
+                  or lower(k.name) like lower(concat('%', :q, '%'))
+                  or lower(p.name) like lower(concat('%', :q, '%'))
+              )
+        """
+    )
     Page<Movie> searchByText(@Param("q") String q,
                              @Param("includeAdult") boolean includeAdult,
                              Pageable pageable);
