@@ -1,0 +1,47 @@
+{
+  "index": { "max_ngram_diff": 20 },
+  "analysis": {
+    "analyzer": {
+      "korean_analyzer": {
+        "type": "custom",
+        "tokenizer": "nori_tokenizer",
+        "filter": ["nori_pos_filter"]
+      },
+
+
+      "chosung_edge_analyzer": {
+        "type": "custom",
+        "tokenizer": "keyword",
+        "filter": ["lowercase", "edge_ngram_filter"]
+      },
+
+      "chosung_ngram_analyzer": {
+        "type": "custom",
+        "tokenizer": "keyword",
+        "filter": ["lowercase", "ngram_filter"]
+      },
+
+
+      "keyword_lower": {
+        "type": "custom",
+        "tokenizer": "keyword",
+        "filter": ["lowercase"]
+      },
+
+
+      "chosung_search_analyzer": {
+        "type": "custom",
+        "tokenizer": "keyword",
+        "filter": ["lowercase"]
+      }
+    },
+    "filter": {
+      "nori_pos_filter": {
+        "type": "nori_part_of_speech",
+        "stoptags": ["E","IC","J","MAG","MAJ","MM","SP","SSC","SSO","SC","SE","XPN","XSA","XSN","XSV","UNA","NA","VSV"]
+      },
+      "edge_ngram_filter": { "type": "edge_ngram", "min_gram": 1, "max_gram": 10 },
+      "ngram_filter":      { "type": "ngram",      "min_gram": 2, "max_gram": 10 }
+    }
+  }
+}
