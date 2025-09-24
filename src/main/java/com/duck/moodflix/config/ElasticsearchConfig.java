@@ -40,10 +40,13 @@ public class ElasticsearchConfig {
     public ElasticsearchClient elasticsearchClient() {
         try {
             // 1) URI 파싱 + 스킴 자동 인식 (http/https)
-            URI uri = URI.create(uris);
-            String host = uri.getHost();
-            int port = (uri.getPort() == -1 ? 9200 : uri.getPort());
-            String scheme = (uri.getScheme() == null ? "http" : uri.getScheme());
+            String[] uriTokens = uris.split("\\s*,\\s*");  // 콤마로 구분된 URI들
+            URI first = URI.create(uriTokens[0]);  // 첫 번째 URI로 scheme 추출
+            String scheme = (first.getScheme() == null ? "http" : first.getScheme());
+            org.apache.http.HttpHost[] hosts = java.util.Arrays.stream(uriTokens)
+                    .map(URI::create)
+                    .map(u -> new HttpHost(u.getHost(), (u.getPort() == -1 ? 9200 : u.getPort()), (u.getScheme() == null ? "http" : u.getScheme())))
+                    .toArray(HttpHost[]::new);
 
             // 2) Basic 인증
             CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
@@ -69,7 +72,7 @@ public class ElasticsearchConfig {
             }
 
             // 4) RestClient 빌더 — 여기서 Keep-Alive/Timeout 튜닝 추가
-            RestClient restClient = RestClient.builder(new HttpHost(host, port, scheme))
+            RestClient restClient = RestClient.builder(hosts)
                     // (a) 요청 타임아웃
                     .setRequestConfigCallback(rc -> rc
                             .setConnectTimeout(5_000)     // 연결 수립
