@@ -12,7 +12,8 @@
 hs_err_pid*
 replay_pid*
 *.ctxt
-*.iml
+**.iml
+**.xml
 
 # -----------------
 # Build / Caches
@@ -21,7 +22,7 @@ replay_pid*
 .gradle/
 gradle/
 # /gradle/        # gradle 폴더 전체를 무시하지 않으려면 이 줄을 지우세요 (wrapper 예외는 아래에 있음)
-build/
+/build/
 /target/
 /out/
 /bin/
@@ -30,11 +31,10 @@ build/
 # IntelliJ & JetBrains
 # -----------------
 .idea
-.idea/
+/.idea/
 *.iws
 .idea_modules/
 *.ipr
-*.iml
 
 # 인텔리제이 각종 캐시, 설정, 자동생성 파일
 .idea/**/workspace.xml
