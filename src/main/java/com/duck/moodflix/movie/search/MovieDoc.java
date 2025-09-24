@@ -18,6 +18,9 @@ public class MovieDoc {
     @Id
     private Long id;
 
+    @Field(type = FieldType.Long, name = "idSort")
+    private Long idSort;
+
     @Field(type = FieldType.Long)
     private Long tmdbId;
 
