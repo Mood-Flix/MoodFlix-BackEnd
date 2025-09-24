@@ -40,7 +40,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         //USER/ADMIN 보호 구간
                         .requestMatchers("/api/users/**").hasAnyRole("USER", "ADMIN")
-                        .requestMatchers("/api/recommend/**","/api/admin/embedding/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/recommend/**").permitAll()
+                        .requestMatchers("/api/admin/embedding/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
