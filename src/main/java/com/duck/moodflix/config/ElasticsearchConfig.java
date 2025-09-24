@@ -55,7 +55,7 @@ public class ElasticsearchConfig {
                     new UsernamePasswordCredentials(username, password)
             );
 
-            // 3) (개발용) HTTPS일 때만 trust-all SSLContext 준비
+            // 3) HTTPS + 검증 비활성화일 때만 trust-all SSLContext (개발/로컬 용)
             SSLContext trustAllSsl;
             String verificationMode = System.getProperty("spring.elasticsearch.ssl.verification-mode",
                     System.getenv().getOrDefault("SPRING_ELASTICSEARCH_SSL_VERIFICATION_MODE", "full"));
@@ -67,18 +67,19 @@ public class ElasticsearchConfig {
                             public void checkServerTrusted(X509Certificate[] certs, String authType) {}
                         }
                 };
+                // TLSv1.2 이상 사용 (프로덕션에서는 최소 TLSv1.2)
                 trustAllSsl = SSLContext.getInstance("TLSv1.2");
                 trustAllSsl.init(null, trustAll, new java.security.SecureRandom());
             } else {
                 trustAllSsl = null;
             }
 
-            // 4) RestClient 빌더 — 여기서 Keep-Alive/Timeout 튜닝 추가
+            // 4) RestClient 빌더 — Keep-Alive/Timeout 튜닝 추가
             RestClient restClient = RestClient.builder(hosts)
-                    // (a) 요청 타임아웃
                     .setRequestConfigCallback(rc -> rc
-                            .setConnectTimeout(5_000)     // 연결 수립
-                            .setSocketTimeout(60_000)     // 응답 대기
+                            .setConnectTimeout(5_000)        // 연결 수립 타임아웃
+                            .setSocketTimeout(60_000)        // 응답 대기 타임아웃
+                            .setConnectionRequestTimeout(2_000) // 풀에서 커넥션 대기 타임아웃
                     )
                     .setHttpClientConfigCallback(hc -> {
                         hc.setDefaultCredentialsProvider(credentialsProvider)
@@ -89,9 +90,8 @@ public class ElasticsearchConfig {
                                 // 너무 오래된 커넥션은 강제로 수명 제한(예: 60초)
                                 .setConnectionTimeToLive(60, TimeUnit.SECONDS)
                                 // TCP keepalive ON
-                                .setDefaultIOReactorConfig(IOReactorConfig.custom().setSoKeepAlive(true).build()
-                                );
-                        // HTTPS일 때만 SSLContext 적용 (기존 분기 유지)
+                                .setDefaultIOReactorConfig(IOReactorConfig.custom().setSoKeepAlive(true).build());
+                        // HTTPS일 때만 SSLContext 적용 (개발 환경에서만 trust-all 적용)
                         if ("https".equalsIgnoreCase(scheme) && trustAllSsl != null) hc.setSSLContext(trustAllSsl);
                         return hc;
                     })
