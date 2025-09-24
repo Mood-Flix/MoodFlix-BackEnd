@@ -28,7 +28,11 @@ public class MovieSearchService {
             NativeQuery nq = NativeQuery.builder()
                     .withQuery(qb -> qb.matchAll(m -> m))
                     .withPageable(pageable)
-                    .withSort(Sort.by(Sort.Order.desc("voteAverage"), Sort.Order.desc("tmdbId")))
+                    .withSort(Sort.by(
+                            Sort.Order.desc("_score"),
+                            Sort.Order.desc("voteAverage"),
+                            Sort.Order.desc("tmdbId")
+                    ))
                     .build();
             SearchHits<MovieDoc> hits = esOps.search(nq, MovieDoc.class);
             return toPage(hits, pageable);
@@ -43,7 +47,11 @@ public class MovieSearchService {
                         .should(s -> s.match(mq -> mq.field("titleChoseong.ngram").query(norm))) // 포함 매칭
                 ))
                 .withPageable(pageable)
-                .withSort(Sort.by(Sort.Order.desc("voteAverage"), Sort.Order.desc("tmdbId")))
+                .withSort(Sort.by(
+                        Sort.Order.desc("_score"),
+                        Sort.Order.desc("voteAverage"),
+                        Sort.Order.desc("tmdbId")
+                ))
                 .build()
                 : NativeQuery.builder()
                 .withQuery(qb -> qb.bool(b -> b
@@ -54,7 +62,11 @@ public class MovieSearchService {
                         ))
                 ))
                 .withPageable(pageable)
-                .withSort(Sort.by(Sort.Order.desc("voteAverage"), Sort.Order.desc("tmdbId")))
+                .withSort(Sort.by(
+                        Sort.Order.desc("_score"),
+                        Sort.Order.desc("voteAverage"),
+                        Sort.Order.desc("tmdbId")
+                ))
                 .build();
 
         return toPage(esOps.search(nq, MovieDoc.class), pageable);
