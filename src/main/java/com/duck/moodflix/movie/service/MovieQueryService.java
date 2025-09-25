@@ -116,4 +116,18 @@ public class MovieQueryService {
         // TMDb는 '/xxx.jpg' 형태, Gravatar는 'https://...' 전체 URL일 수 있음
         return path.startsWith("/") ? (root + "/w185" + path) : path;
     }
+
+    @Transactional(readOnly = true)
+    public Page<MovieSummaryResponse> searchMovies(String q, boolean includeAdult, Pageable pageable) {
+        String norm = (q == null) ? "" : q.trim();
+        if (norm.isEmpty()) {
+            Page<Movie> page = includeAdult
+                    ? movieRepository.findAll(pageable)                 // 필요시 기본 정렬 포함
+                    : movieRepository.findByAdultFalse(pageable);
+            return page.map(this::toSummary);
+        }
+        return movieRepository.searchByText(norm, includeAdult, pageable)
+                .map(this::toSummary);
+    }
+
 }

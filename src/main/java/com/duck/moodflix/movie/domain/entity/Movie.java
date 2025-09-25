@@ -45,6 +45,9 @@ public class Movie {
     @Column(name = "adult", nullable = false)
     private boolean adult;
 
+    @Column(name = "popularity")
+    private Double popularity;
+
     @OneToMany(mappedBy = "movie", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private Set<MovieKeyword> movieKeywords = new LinkedHashSet<>();
