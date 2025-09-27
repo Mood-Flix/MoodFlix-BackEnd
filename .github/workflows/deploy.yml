@@ -124,18 +124,21 @@ jobs:
               -e "JWT_SECRET=${{ secrets.JWT_SECRET }}" \
               -e "KAKAO_CLIENT_ID=${{ secrets.KAKAO_CLIENT_ID }}" \
               -e "TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}" \
+              -e "SPRING_ELASTICSEARCH_URIS=http://13.209.3.38:9200" \
+              -e "SPRING_ELASTICSEARCH_USERNAME=elastic" \
+              -e "SPRING_ELASTICSEARCH_PASSWORD=${{ secrets.ES_PASSWORD }}" \
               ${{ steps.login-ecr.outputs.registry }}/${{ secrets.AWS_ECR_REPOSITORY }}:${{ github.sha }}
 
             # 6) Health check (최대 1분 대기)
             echo "Waiting for application to start..."
-            for i in {1..30}; do
+            for i in {1..60}; do   # 60회 반복
               if curl -fsS http://localhost:8080/actuator/health | grep -q '"status":"UP"'; then
-                echo "Health check successful!";
-                exit 0;
-              fi;
-              sleep 2;
+                echo "Health check successful!"
+                exit 0
+               fi
+               sleep 2
             done
-            
-            echo "Health check failed after 60 seconds."
-            docker logs --tail 100 moodflix-container
+  
+            echo "Health check failed after 120 seconds."
+            docker logs --tail 300 moodflix-container
             exit 1

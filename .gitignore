@@ -19,12 +19,20 @@ replay_pid*
 # -----------------
 /.gradle/
 .gradle/
-gradle/
-# /gradle/        # gradle 폴더 전체를 무시하지 않으려면 이 줄을 지우세요 (wrapper 예외는 아래에 있음)
+/gradle/
 /build/
 /target/
 /out/
 /bin/
+
+# -----------------
+# 꼭 커밋해야 하는 Gradle Wrapper 예외 (순서 중요)
+# -----------------
+!gradle/wrapper/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+!gradlew
+!gradlew.bat
 
 # -----------------
 # IntelliJ & JetBrains
@@ -102,10 +110,4 @@ $RECYCLE.BIN/
 # /db/data/
 # /docs/build/
 
-# -----------------
-# 꼭 커밋해야 하는 Gradle Wrapper 예외 (순서 중요)
-# -----------------
-!gradle/wrapper/gradle-wrapper.jar
-!gradle/wrapper/gradle-wrapper.properties
-!gradlew
-!gradlew.bat
+
