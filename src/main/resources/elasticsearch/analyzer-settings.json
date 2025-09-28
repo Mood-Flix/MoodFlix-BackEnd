@@ -8,6 +8,12 @@
         "filter": ["nori_pos_filter"]
       },
 
+      "normalizer": {
+        "lowercase_normalizer": {
+          "type": "custom",
+          "filter": ["lowercase"]
+        }
+      },
 
       "chosung_edge_analyzer": {
         "type": "custom",
