@@ -21,8 +21,7 @@ public class SwaggerConfig {
         Info info = new Info()
                 .title("MoodFlix API Document")
                 .version("v1.0.0")
-                .description("MoodFlix 프로젝트의 API 명세서입니다.")
-                .contact(new Contact().name("MoodFlix").url("https://api.moodflix.store"));
+                .description("MoodFlix 프로젝트의 API 명세서입니다.");
 
         // JWT 인증 스키마 설정
         String jwtSchemeName = "Bearer Authentication";
@@ -35,6 +34,7 @@ public class SwaggerConfig {
                         .bearerFormat("JWT"));
 
         List<Server> servers = List.of(
+                new Server().url("http://localhost:8080"),
                 new Server().url("https://api.moodflix.store")
         );
 
