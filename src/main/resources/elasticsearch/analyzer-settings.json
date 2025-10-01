@@ -1,6 +1,45 @@
 {
   "index": { "max_ngram_diff": 20 },
   "analysis": {
+    "char_filter": {
+      "nfkc_normalizer": {
+        "type": "icu_normalizer",
+        "name": "nfkc",
+        "mode": "compose"
+      },
+      "punctuation_normalizer": {
+        "type": "mapping",
+        "mappings": [
+          "： => :",
+          "‐ => -",
+          "– => -",
+          "— => -"
+        ]
+      },
+      "whitespace_collapse": {
+        "type": "pattern_replace",
+        "pattern": "\\s+",
+        "replacement": " "
+      },
+      "trim_leading": {
+        "type": "pattern_replace",
+        "pattern": "^\\s+",
+        "replacement": ""
+      },
+      "trim_trailing": {
+        "type": "pattern_replace",
+        "pattern": "\\s+$",
+        "replacement": ""
+      }
+    },
+    "filter": {
+      "nori_pos_filter": {
+        "type": "nori_part_of_speech",
+        "stoptags": ["E","IC","J","MAG","MAJ","MM","SP","SSC","SSO","SC","SE","XPN","XSA","XSN","XSV","UNA","NA","VSV"]
+      },
+      "edge_ngram_filter": { "type": "edge_ngram", "min_gram": 1, "max_gram": 10 },
+      "ngram_filter":      { "type": "ngram",      "min_gram": 2,  "max_gram": 10 }
+    },
     "analyzer": {
       "korean_analyzer": {
         "type": "custom",
@@ -29,18 +68,17 @@
       }
     },
     "normalizer": {
-      "lowercase_normalizer": {
+      "title_exact_norm": {
         "type": "custom",
+        "char_filter": [
+          "nfkc_normalizer",
+          "punctuation_normalizer",
+          "whitespace_collapse",
+          "trim_leading",
+          "trim_trailing"
+        ],
         "filter": ["lowercase"]
       }
-    },
-    "filter": {
-      "nori_pos_filter": {
-        "type": "nori_part_of_speech",
-        "stoptags": ["E","IC","J","MAG","MAJ","MM","SP","SSC","SSO","SC","SE","XPN","XSA","XSN","XSV","UNA","NA","VSV"]
-      },
-      "edge_ngram_filter": { "type": "edge_ngram", "min_gram": 1, "max_gram": 10 },
-      "ngram_filter":      { "type": "ngram",      "min_gram": 2, "max_gram": 10 }
     }
   }
 }
