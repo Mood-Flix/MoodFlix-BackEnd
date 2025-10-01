@@ -21,7 +21,13 @@ public class MovieDoc {
     @Field(type = FieldType.Long)
     private Long tmdbId;
 
-    @Field(type = FieldType.Text, analyzer = "korean_analyzer")
+    @MultiField(
+            mainField = @Field(type = FieldType.Text, analyzer = "korean_analyzer"),
+            otherFields = {
+                    // 정확 일치(term) 조회용 서브필드
+                    @InnerField(suffix = "exact", type = FieldType.Keyword, normalizer = "lowercase_normalizer")
+            }
+    )
     private String title;
 
     @MultiField(

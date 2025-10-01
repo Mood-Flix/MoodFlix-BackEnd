@@ -66,7 +66,6 @@ public class Movie {
         updatedAt = LocalDateTime.now();
     }
 
-    /** 관계 해제: orphanRemoval=true 에 맡김 */
     public void removeMovieKeyword(MovieKeyword mk) {
         this.movieKeywords.remove(mk);
         // mk.setMovie(null);  // nullable=false이므로 null 세팅하지 않음
