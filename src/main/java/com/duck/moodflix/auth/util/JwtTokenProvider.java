@@ -4,6 +4,7 @@ import com.duck.moodflix.users.domain.entity.enums.Role;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -11,6 +12,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
+@Slf4j
 @Component
 public class JwtTokenProvider {
 
@@ -38,7 +40,7 @@ public class JwtTokenProvider {
                 .claim("role", role.name())     // "role" 커스텀 클레임 추가
                 .issuedAt(now)                  // 발급 시간 설정
                 .expiration(expiryDate)           // 만료 시간 설정
-                .signWith(key)                  // 서명
+                .signWith(key, Jwts.SIG.HS384)   // 서명
                 .compact();                     // JWT 문자열 생성
     }
 
@@ -47,12 +49,25 @@ public class JwtTokenProvider {
         return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
     }
 
+    // JwtTokenProvider.java
     public boolean validateToken(String token) {
         try {
-            Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
+            Jwts.parser()
+                    .verifyWith(key)                  // 같은 key 필드 사용
+                    .clockSkewSeconds(60)             // 서버/클라 시계 오차 허용
+                    .build()
+                    .parseSignedClaims(token);
             return true;
+        } catch (io.jsonwebtoken.ExpiredJwtException e) {
+            log.warn("[JWT] expired at {}", e.getClaims().getExpiration());
+        } catch (io.jsonwebtoken.security.SignatureException e) {
+            log.warn("[JWT] signature invalid (secret/alg mismatch): {}", e.getMessage());
+        } catch (io.jsonwebtoken.JwtException e) {  // MalformedJwtException 포함
+            log.warn("[JWT] invalid jwt: {}", e.getMessage());
         } catch (Exception e) {
-            return false;
+            log.warn("[JWT] unknown error: {}", e.toString());
         }
+        return false;
     }
+
 }

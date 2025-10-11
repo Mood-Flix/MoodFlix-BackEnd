@@ -1,6 +1,8 @@
-package com.duck.moodflix.auth.config;
+package com.duck.moodflix.config;
 
+import com.duck.moodflix.auth.config.TMDbProperties;
 import io.netty.channel.ChannelOption;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
@@ -54,6 +56,18 @@ public class WebClientConfig {
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader(HttpHeaders.ACCEPT_ENCODING, "gzip")
+                .build();
+    }
+
+    @Bean("modelClient")
+    WebClient modelClient(@Value("${moodflix.model.base-url}") String baseUrl,
+                          @Value("${moodflix.model.timeout-ms:3000}") int timeoutMs) {
+        var http = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+                .responseTimeout(Duration.ofMillis(timeoutMs));
+        return WebClient.builder()
+                .baseUrl(baseUrl)
+                .clientConnector(new ReactorClientHttpConnector(http))
                 .build();
     }
 

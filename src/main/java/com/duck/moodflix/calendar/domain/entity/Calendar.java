@@ -1,7 +1,7 @@
 package com.duck.moodflix.calendar.domain.entity;
 
 import com.duck.moodflix.movie.domain.entity.Movie;
-import com.duck.moodflix.movie.domain.entity.Recommendation;
+import com.duck.moodflix.recommend.domain.entity.Recommendation;
 import com.duck.moodflix.users.domain.entity.User;
 import jakarta.persistence.*;
 import lombok.AccessLevel;

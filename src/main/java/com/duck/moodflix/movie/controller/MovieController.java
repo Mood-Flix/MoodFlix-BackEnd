@@ -65,7 +65,6 @@ public class MovieController {
 
 
     @Operation(summary = "전체 영화 목록(요약) 조회 - 페이징")
-    @SecurityRequirement(name = "Bearer Authentication")
     @GetMapping
     public ResponseEntity<Page<MovieSummaryResponse>> getAllMovies(
             @RequestParam(defaultValue = "0") int page,
@@ -83,14 +82,12 @@ public class MovieController {
     }
 
     @Operation(summary = "영화 상세 조회")
-    @SecurityRequirement(name = "Bearer Authentication")
     @GetMapping("/{id}")
     public ResponseEntity<MovieDetailResponse> getMovieById(@PathVariable Long id) {
         return ResponseEntity.ok(queryService.getMovieDetailResponse(id));
     }
 
     @Operation(summary = "영화 검색", description = "제목/키워드/장르로 전체 텍스트 검색")
-    @SecurityRequirement(name = "Bearer Authentication")
     @GetMapping("/search")
     public ResponseEntity<PageDto<MovieDoc>> search(
             @RequestParam(required = false) String q,

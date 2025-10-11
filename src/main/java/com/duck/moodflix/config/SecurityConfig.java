@@ -1,6 +1,8 @@
 package com.duck.moodflix.config;
 
 import com.duck.moodflix.auth.config.JwtAuthenticationFilter;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -16,6 +18,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
+@Slf4j
 @Configuration
 @RequiredArgsConstructor
 @EnableMethodSecurity // 메서드 레벨의 보안 설정을 활성화합니다.
@@ -37,15 +40,28 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        //USER/ADMIN 보호 구간
-                        .requestMatchers("/api/users/**").hasAnyRole("USER", "ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/recommend/**").permitAll()
-                        .requestMatchers("/api/admin/embedding/**").hasRole("ADMIN")
+
+                        // 보호 구간
+                        .requestMatchers("/api/recommend/admin/**").hasRole("ADMIN")                 // ← 기존 permitAll 제거 (안전)
+                        .requestMatchers("/api/users/**").hasAnyRole("USER","ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
-
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .exceptionHandling(e -> e
+                        .authenticationEntryPoint((req, res, ex) -> { //  토큰 없음/무효 → 401
+                            log.warn("Unauthenticated: {} {} (token missing/invalid)", req.getMethod(), req.getRequestURI());
+                            res.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                        })
+                        .accessDeniedHandler((req, res, ex) -> {      //  권한 부족 → 403
+                            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                            log.error("AccessDenied: {} {}, principal={}, authorities={}",
+                                    req.getMethod(), req.getRequestURI(),
+                                    auth != null ? auth.getName() : "null",
+                                    auth != null ? auth.getAuthorities() : "null");
+                            res.sendError(HttpServletResponse.SC_FORBIDDEN);
+                        })
+        );
         return http.build();
     }
 
@@ -54,7 +70,7 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
 
         // 🔽 허용할 출처에 실제 프론트엔드 도메인을 추가합니다.
-        config.setAllowedOrigins(List.of("http://localhost:3000", "https://www.moodflix.store", "https://api.moodflix.store"));
+        config.setAllowedOrigins(List.of("http://localhost:*", "https://www.moodflix.store", "https://api.moodflix.store"));
         
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
