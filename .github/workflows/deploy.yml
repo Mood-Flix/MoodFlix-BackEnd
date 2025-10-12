@@ -5,7 +5,7 @@ name: MoodFlix Backend CI/CD
 on:
   push:
 
-    branches: [ "fix/movie-search" ]
+    branches: [ "main" ]
 
 
 # 어떤 작업을 수행할 것인가?
