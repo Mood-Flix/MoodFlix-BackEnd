@@ -3,8 +3,6 @@ package com.duck.moodflix.auth.controller;
 import com.duck.moodflix.auth.util.JwtTokenProvider;
 import com.duck.moodflix.users.domain.entity.enums.Role;
 import io.jsonwebtoken.Claims;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;

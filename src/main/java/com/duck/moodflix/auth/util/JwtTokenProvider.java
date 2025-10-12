@@ -45,8 +45,6 @@ public class JwtTokenProvider {
         this.expirationMilliseconds = expirationMilliseconds;
         this.keyFingerprint = sha256Base64(keyBytes);
 
-        log.info("[JWT] keyBytes.len={} (HS384), key.fp={}, expMs={}",
-                keyBytes.length, keyFingerprint, expirationMilliseconds);
     }
 
     /** 토큰 발급 */
@@ -62,10 +60,6 @@ public class JwtTokenProvider {
                 .signWith(key, Jwts.SIG.HS384) // ← 발급 alg 고정
                 .compact();
 
-        if (log.isDebugEnabled()) {
-            log.debug("[JWT] issue token: sub={}, role={}, iat={}, exp={}, key.fp={}, alg={}",
-                    userId, role.name(), now, expiryDate, keyFingerprint, algName);
-        }
         return token;
     }
 
@@ -84,12 +78,6 @@ public class JwtTokenProvider {
 
         Header header = jws.getHeader();
         Claims payload = jws.getPayload();
-
-        if (log.isDebugEnabled()) {
-            log.debug("[JWT] parse claims ok: alg={}, sub={}, role={}, iat={}, exp={}, key.fp={}",
-                    header.getAlgorithm(), payload.getSubject(), payload.get("role"),
-                    payload.getIssuedAt(), payload.getExpiration(), keyFingerprint);
-        }
         return payload;
     }
 
