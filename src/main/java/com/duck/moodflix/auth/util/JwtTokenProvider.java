@@ -32,6 +32,8 @@ public class JwtTokenProvider {
     public JwtTokenProvider(@Value("${jwt.secret.key}") String secretKey,
                             @Value("${jwt.expiration.ms}") long expirationMilliseconds) {
 
+        log.info("### Loading JWT Secret Key from properties: [{}]", secretKey);
+
         // 1) 공백/개행 제거 (중요)
         String normalized = secretKey == null ? "" : secretKey.strip();
         byte[] keyBytes = normalized.getBytes(StandardCharsets.UTF_8);
