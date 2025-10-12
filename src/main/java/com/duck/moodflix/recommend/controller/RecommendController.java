@@ -38,7 +38,7 @@ public class RecommendController {
     private final UserRepository userRepository;
 
     @PostMapping("/by-text")
-    public Mono<RecommendService.Response> byText(
+    public Mono<RecommendDtos.Response> byText(
             @RequestBody RecommendDtos.Request req,
             @AuthenticationPrincipal User principal) {
         log.info("[CTRL DEBUG] /by-text principal={}", principal);

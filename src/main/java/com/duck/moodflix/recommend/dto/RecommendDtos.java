@@ -1,5 +1,6 @@
 package com.duck.moodflix.recommend.dto;
 
+import com.duck.moodflix.movie.dto.response.MovieSummaryResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
@@ -14,14 +15,10 @@ public class RecommendDtos {
             Integer topN
     ) {}
 
-    @Schema(name = "RecommendItem", description = "추천 결과 1건")
-    public record Item(
-            @Schema(description = "영화 ID", example = "1824")
-            Long movieId,
-            @Schema(description = "영화 제목", example = "에브리띵 윌 비 파인")
-            String title,
-            @Schema(description = "장르 목록", example = "[\"드라마\"]")
-            List<String> genres,
+    @Schema(name = "RecommendItemResponse", description = "추천 결과 1건")
+    public record RecommendItemResponse(
+            @Schema(description = "영화 요약 정보")
+            MovieSummaryResponse movie,
             @Schema(description = "유사도(0~1)", example = "0.9368")
             double similarity
     ) {}
@@ -30,7 +27,8 @@ public class RecommendDtos {
     public record Response(
             @Schema(description = "모델 버전", example = "searle-j/kote_for_easygoing_people")
             String version,
-            List<Item> items,
+            @Schema(description = "추천 영화 목록")
+            List<RecommendItemResponse> items,
             @Schema(description = "입력 로그 ID", example = "456")
             Long logId
     ) {}
