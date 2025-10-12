@@ -27,6 +27,7 @@ import java.util.Map;
 
 @Slf4j
 @RestController
+@SecurityRequirement(name = "bearerAuth")
 @RequestMapping("/api/recommend")
 @RequiredArgsConstructor
 @Tag(name = "Recommend", description = "영화 추천 API (백엔드 → 모델서버 프록시)")
@@ -48,7 +49,6 @@ public class RecommendController {
                     )
             )
     )
-    @SecurityRequirement(name = "bearerAuth")
     @PostMapping("/by-text")
     public Mono<RecommendService.Response> byText(
             @RequestBody RecommendDtos.Request req,

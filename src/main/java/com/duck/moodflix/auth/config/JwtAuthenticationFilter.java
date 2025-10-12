@@ -33,12 +33,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        String token = resolveToken(request);
+        String authHeader = request.getHeader("Authorization");
 
+        log.warn("[AUTH DEBUG] {} {} hasAuthHeader={} len={}",
+                request.getMethod(), request.getRequestURI(),
+                authHeader != null, authHeader == null ? -1 : authHeader.length());
+        String token = resolveToken(request);
+        log.warn("[AUTH DEBUG] token.present={}, token.len={}", token != null, token == null ? -1 : token.length());
         // [수정] 토큰 유효성, 기존 인증 여부 확인
         if (token != null
                 && jwtTokenProvider.validateToken(token)
                 && SecurityContextHolder.getContext().getAuthentication() == null) {
+
+            log.debug("[AUTH] path={}, method={}, hasToken={}, valid={}",
+                    request.getRequestURI(), request.getMethod(),
+                    token != null, jwtTokenProvider.validateToken(token));
 
             // [수정] NumberFormatException 예외 처리
             try {
@@ -66,6 +75,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+        var a = SecurityContextHolder.getContext().getAuthentication();
+        log.warn("[AUTH DEBUG] afterChain principal={}, authorities={}",
+                a == null ? "null" : a.getName(),
+                a == null ? "null" : a.getAuthorities());
     }
 
     /**
@@ -76,11 +89,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     // JwtAuthenticationFilter.java
     private String resolveToken(HttpServletRequest request) {
         String bearerToken = request.getHeader("Authorization");
-        if (log.isDebugEnabled()) {
-            log.debug("Authorization header present: {}", StringUtils.hasText(bearerToken));
-        }
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7);
+            String token = bearerToken.substring(7);
+            token = (token != null) ? token.trim() : null;
+            log.debug("[AUTH DEBUG] token.present={}, token.len={}",
+                    token != null, token != null ? token.length() : 0);
+            return (StringUtils.hasText(token)) ? token : null; // ★ 빈 문자열은 null 처리
         }
         return null;
     }

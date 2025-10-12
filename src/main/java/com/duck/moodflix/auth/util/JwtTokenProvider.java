@@ -2,14 +2,22 @@ package com.duck.moodflix.auth.util;
 
 import com.duck.moodflix.users.domain.entity.enums.Role;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.Header;
+import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.SignatureException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
 import java.util.Date;
 
 @Slf4j
@@ -18,56 +26,124 @@ public class JwtTokenProvider {
 
     private final SecretKey key;
     private final long expirationMilliseconds;
+    private final String keyFingerprint; // SHA-256 of normalized secret
+    private final String algName = "HS384"; // 발급 시 사용할 알고리즘 명시
 
     public JwtTokenProvider(@Value("${jwt.secret.key}") String secretKey,
                             @Value("${jwt.expiration.ms}") long expirationMilliseconds) {
-        // [수정] JWT 비밀키의 길이가 최소 32바이트인지 검증
-        if (secretKey.getBytes(StandardCharsets.UTF_8).length < 32) {
-            throw new IllegalArgumentException("JWT 비밀키는 최소 32바이트 이상이어야 합니다.");
+
+        // 1) 공백/개행 제거 (중요)
+        String normalized = secretKey == null ? "" : secretKey.strip();
+        byte[] keyBytes = normalized.getBytes(StandardCharsets.UTF_8);
+
+        // 2) HS384는 권장 48바이트 이상
+        if (keyBytes.length < 48) {
+            throw new IllegalArgumentException("JWT 비밀키는 HS384 사용시 최소 48바이트 이상을 권장합니다. 현재=" + keyBytes.length + " bytes");
         }
 
-        this.key = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
+        this.key = Keys.hmacShaKeyFor(keyBytes);
         this.expirationMilliseconds = expirationMilliseconds;
+        this.keyFingerprint = sha256Base64(keyBytes);
+
+        log.info("[JWT] keyBytes.len={} (HS384), key.fp={}, expMs={}",
+                keyBytes.length, keyFingerprint, expirationMilliseconds);
     }
 
-    // [수정] 파라미터를 Set<Role>에서 단일 Role로 변경
+    /** 토큰 발급 */
     public String generateToken(Long userId, Role role) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + expirationMilliseconds);
 
-        return Jwts.builder()
-                .subject(Long.toString(userId)) // subject 클레임 설정
-                .claim("role", role.name())     // "role" 커스텀 클레임 추가
-                .issuedAt(now)                  // 발급 시간 설정
-                .expiration(expiryDate)           // 만료 시간 설정
-                .signWith(key, Jwts.SIG.HS384)   // 서명
-                .compact();                     // JWT 문자열 생성
+        String token = Jwts.builder()
+                .subject(Long.toString(userId))
+                .claim("role", role.name())
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(key, Jwts.SIG.HS384) // ← 발급 alg 고정
+                .compact();
+
+        if (log.isDebugEnabled()) {
+            log.debug("[JWT] issue token: sub={}, role={}, iat={}, exp={}, key.fp={}, alg={}",
+                    userId, role.name(), now, expiryDate, keyFingerprint, algName);
+        }
+        return token;
     }
 
-
+    /** 토큰에서 Claims 추출 (검증 포함) */
     public Claims getClaimsFromToken(String token) {
-        return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+        if (!org.springframework.util.StringUtils.hasText(token)) {
+            log.warn("[JWT] getClaimsFromToken: empty token");
+            return null;
+        }
+
+        Jws<Claims> jws = Jwts.parser()
+                .verifyWith(key)
+                .clockSkewSeconds(120)
+                .build()
+                .parseSignedClaims(token);
+
+        Header header = jws.getHeader();
+        Claims payload = jws.getPayload();
+
+        if (log.isDebugEnabled()) {
+            log.debug("[JWT] parse claims ok: alg={}, sub={}, role={}, iat={}, exp={}, key.fp={}",
+                    header.getAlgorithm(), payload.getSubject(), payload.get("role"),
+                    payload.getIssuedAt(), payload.getExpiration(), keyFingerprint);
+        }
+        return payload;
     }
 
-    // JwtTokenProvider.java
+    /** 토큰 유효성 검증 */
     public boolean validateToken(String token) {
         try {
-            Jwts.parser()
-                    .verifyWith(key)                  // 같은 key 필드 사용
-                    .clockSkewSeconds(60)             // 서버/클라 시계 오차 허용
+            if (!org.springframework.util.StringUtils.hasText(token)) {
+                log.warn("[JWT] validate: empty token string");
+                return false;
+            }
+
+            Jws<Claims> jws = Jwts.parser()
+                    .verifyWith(key)
+                    .clockSkewSeconds(120)
                     .build()
                     .parseSignedClaims(token);
+
+            Header header = jws.getHeader();
+            Claims c = jws.getPayload();
+
+            if (log.isDebugEnabled()) {
+                log.debug("[JWT] validate ok: alg={}, sub={}, role={}, iat={}, exp={}, key.fp={}",
+                        header.getAlgorithm(), c.getSubject(), c.get("role"),
+                        c.getIssuedAt(), c.getExpiration(), keyFingerprint);
+            }
             return true;
-        } catch (io.jsonwebtoken.ExpiredJwtException e) {
-            log.warn("[JWT] expired at {}", e.getClaims().getExpiration());
-        } catch (io.jsonwebtoken.security.SignatureException e) {
-            log.warn("[JWT] signature invalid (secret/alg mismatch): {}", e.getMessage());
-        } catch (io.jsonwebtoken.JwtException e) {  // MalformedJwtException 포함
-            log.warn("[JWT] invalid jwt: {}", e.getMessage());
+
+        } catch (ExpiredJwtException e) {
+            log.warn("[JWT] expired: exp={}, now={}, sub={}",
+                    safeDate(e.getClaims().getExpiration()), new Date(), e.getClaims().getSubject());
+        } catch (SignatureException e) {
+            log.warn("[JWT] signature invalid (secret/alg mismatch?): msg={}, key.fp={}",
+                    e.getMessage(), keyFingerprint);
+        } catch (MalformedJwtException e) {
+            log.warn("[JWT] malformed jwt: {}, key.fp={}", e.getMessage(), keyFingerprint);
+        } catch (io.jsonwebtoken.JwtException e) {
+            log.warn("[JWT] invalid jwt: {}, key.fp={}", e.getMessage(), keyFingerprint);
         } catch (Exception e) {
-            log.warn("[JWT] unknown error: {}", e.toString());
+            log.warn("[JWT] unknown error: {}, key.fp={}", e.toString(), keyFingerprint);
         }
         return false;
     }
 
+    // ======= helpers =======
+    private static String sha256Base64(byte[] bytes) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return Base64.getEncoder().encodeToString(md.digest(bytes));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    private static Date safeDate(Date d) {
+        return d == null ? null : new Date(d.getTime());
+    }
 }

@@ -34,18 +34,20 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/movies", "/api/movies/{id}", "/api/movies/search").permitAll()
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/", "/index.html", "/error", "/favicon.ico",
                                 "/css/**", "/js/**", "/images/**", "/assets/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                         // 보호 구간
                         .requestMatchers("/api/recommend/admin/**").hasRole("ADMIN")                 // ← 기존 permitAll 제거 (안전)
                         .requestMatchers("/api/users/**").hasAnyRole("USER","ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .anyRequest().authenticated()
+                        .requestMatchers("/api/recommend/**").permitAll()
+                        .requestMatchers("/api/dev/auth/**").permitAll()
+                        .anyRequest().permitAll()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(e -> e
@@ -70,8 +72,8 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
 
         // 🔽 허용할 출처에 실제 프론트엔드 도메인을 추가합니다.
-        config.setAllowedOrigins(List.of("http://localhost:*", "https://www.moodflix.store", "https://api.moodflix.store"));
-        
+        config.setAllowedOriginPatterns(List.of("http://localhost:*", "https://www.moodflix.store", "https://api.moodflix.store"));
+        config.setAllowedHeaders(List.of("Authorization","Content-Type"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
