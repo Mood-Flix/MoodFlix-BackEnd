@@ -61,9 +61,10 @@ public class WebClientConfig {
 
     @Bean("modelClient")
     WebClient modelClient(@Value("${moodflix.model.base-url}") String baseUrl,
+                          @Value("${moodflix.model.connect-timeout-ms:5000}") int connectTimeoutMs,
                           @Value("${moodflix.model.timeout-ms:3000}") int timeoutMs) {
         var http = HttpClient.create()
-                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeoutMs)
                 .responseTimeout(Duration.ofMillis(timeoutMs));
         return WebClient.builder()
                 .baseUrl(baseUrl)
