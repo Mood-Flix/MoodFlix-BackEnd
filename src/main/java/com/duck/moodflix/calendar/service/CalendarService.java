@@ -94,7 +94,7 @@ public class CalendarService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        CalendarEntry entry = repository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, req.date())
+        CalendarEntry entry = repository.findByUser_UserIdAndDate(userId, req.date())
                 .map(existingEntry -> {
                     existingEntry.updateNoteAndMood(req.note(), req.moodEmoji());
                     log.info("Updated CalendarEntry for userId={}, date={}", userId, req.date());
