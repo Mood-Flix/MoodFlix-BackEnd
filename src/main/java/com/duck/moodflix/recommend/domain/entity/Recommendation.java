@@ -28,10 +28,10 @@ public class Recommendation {
     @JoinColumn(name = "user_emotion_input_id", nullable = false)
     private UserEmotionInput userEmotionInput;
 
-    @Column(nullable = false)
+    @Column(name = "movie_id", nullable = false)
     private Long movieId;
 
-    @Column(nullable = false)
+    @Column(name = "similarity_score")
     private Double similarityScore;
 
     @Column(nullable = false, updatable = false)
@@ -41,5 +41,6 @@ public class Recommendation {
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
     }
+
 }
 
