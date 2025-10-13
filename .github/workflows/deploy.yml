@@ -127,7 +127,7 @@ jobs:
               -e "SPRING_ELASTICSEARCH_URIS=http://13.209.3.38:9200" \
               -e "SPRING_ELASTICSEARCH_USERNAME=elastic" \
               -e "SPRING_ELASTICSEARCH_PASSWORD=${{ secrets.ES_PASSWORD }}" \
-              -e "MODEL_BASE_URL: ${{ secrets.MODEL_BASE_URL }}" \
+              -e "MODEL_BASE_URL=${{ secrets.MODEL_BASE_URL }}" \
               ${{ steps.login-ecr.outputs.registry }}/${{ secrets.AWS_ECR_REPOSITORY }}:${{ github.sha }}
 
             # 6) Health check (최대 1분 대기)
