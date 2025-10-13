@@ -10,7 +10,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "calendar_entries")
+@Table(name = "calendar_entry",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_calendar_entry_user_date", // 제약 조건에 고유한 이름 부여
+                        columnNames = {"user_id", "date"}   // 유니크해야 할 컬럼들의 조합
+                )
+        })
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

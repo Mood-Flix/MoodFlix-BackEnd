@@ -12,7 +12,7 @@ import java.util.Optional;
 public interface CalendarEntryRepository extends JpaRepository<CalendarEntry, Long> {
     List<CalendarEntry> findByUserUserId(Long userId);
     Optional<CalendarEntry> findByIdAndUserUserId(Long id, Long userId);
-    List<CalendarEntry> findByUserUserIdAndDate(Long userId, LocalDate date);  // ✅ List로 변경 (중복 허용)
+    Optional<CalendarEntry> findByUserIdAndDate(Long userId, LocalDate date);
     List<CalendarEntry> findByUserUserIdAndDateBetween(Long userId, LocalDate startDate, LocalDate endDate);
 
     @Query("SELECT c FROM CalendarEntry c LEFT JOIN FETCH c.userInputText WHERE c.user.userId = :userId AND c.date = :date")
