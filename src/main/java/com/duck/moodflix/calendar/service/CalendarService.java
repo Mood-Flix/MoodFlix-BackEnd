@@ -119,7 +119,7 @@ public class CalendarService {
             log.warn("Race condition detected for userId={}, date={}. Retrying update.", userId, req.date());
 
             // 이제는 반드시 데이터가 있으므로 findBy...를 사용 (findFirst... 불필요)
-            CalendarEntry existingEntryAfterConflict = repository.findByUserIdAndDate(userId, req.date())
+            CalendarEntry existingEntryAfterConflict = repository.findByUser_UserIdAndDate(userId, req.date())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                             "Entry not found after data integrity violation. Inconsistent state."));
 
