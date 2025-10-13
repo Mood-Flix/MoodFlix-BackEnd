@@ -12,7 +12,6 @@ import com.duck.moodflix.recommend.dto.RecommendDtos;
 import com.duck.moodflix.recommend.repository.RecommendationRepository;
 import com.duck.moodflix.recommend.repository.UserEmotionInputRepository;
 import com.duck.moodflix.users.domain.entity.User;
-import com.duck.moodflix.users.domain.entity.enums.Role;
 import com.duck.moodflix.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -26,6 +25,7 @@ import reactor.core.scheduler.Schedulers;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,40 +51,21 @@ public class RecommendService {
             return Mono.error(new IllegalArgumentException("userId is required"));
         }
 
-        // [수정 1] subscribeOn 체이닝 오류 수정 및 관리자 제한 해제 로직 추가
+        // [수정 1] 이벤트 루프 블로킹 해결
         return Mono.fromCallable(() -> {
-                    // 사용자 조회 및 역할 확인 (블로킹)
-                    User user = userRepo.findById(userId)
-                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-
-                    // 관리자일 경우, 횟수 제한 로직을 건너뜀
-                    if (user.getRole() == Role.USER.ADMIN) {
-                        log.info("Admin user [{}] - bypassing recommendation limit.", userId);
-                        return -1L; // 관리자는 제한 없음을 의미하는 값
-                    }
-
-                    // 일반 사용자일 경우, 당일 추천 횟수 확인 (블로킹)
                     LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
                     LocalDateTime endOfDay = LocalDate.now().atTime(23, 59, 59, 999999999);
                     return recRepo.countByUserUserIdAndCreatedAtBetween(userId, startOfDay, endOfDay);
                 })
-                .subscribeOn(Schedulers.boundedElastic()) // 올바른 체이닝
+                .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(count -> {
-                    // 관리자가 아닐 경우에만 횟수 체크
-                    if (count != -1L && count >= MAX_DAILY_RECOMMENDATIONS) {
+                    if (count >= MAX_DAILY_RECOMMENDATIONS) {
                         return Mono.error(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                                 "Daily recommendation limit (" + MAX_DAILY_RECOMMENDATIONS + ") reached"));
                     }
-
-                    int topN;
-                    if (count == -1L) { // 관리자
-                        topN = Optional.ofNullable(req.topN()).orElse(20);
-                    } else { // 일반 사용자
-                        topN = Math.min(Optional.ofNullable(req.topN()).orElse(20), MAX_DAILY_RECOMMENDATIONS - count.intValue());
-                    }
+                    int topN = Math.min(Optional.ofNullable(req.topN()).orElse(20), MAX_DAILY_RECOMMENDATIONS - count.intValue());
                     String text = Optional.ofNullable(req.text()).orElse("");
 
-                    // 모델 서버 호출 (논블로킹) -> 결과 저장 (블로킹)
                     return modelClient.recommendByText(text, topN)
                             .flatMap(res -> saveAllReactive(userId, text, res));
                 });
@@ -102,14 +83,27 @@ public class RecommendService {
         log.debug("Saving recommendation for userId={}, text={}", userId, text);
         User userRef = userRepo.getReferenceById(userId);
 
+        // [수정 2] 레이스 컨디션 해결을 위한 트랜잭션 내 재확인
+        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+        LocalDateTime endOfDay = LocalDate.now().atTime(23, 59, 59, 999999999);
+        long currentCount = recRepo.countByUserUserIdAndCreatedAtBetween(userId, startOfDay, endOfDay);
+        int canSaveCount = MAX_DAILY_RECOMMENDATIONS - (int) currentCount;
+
+        if (canSaveCount <= 0) {
+            log.warn("Race condition detected for userId={}. Daily limit reached within transaction.", userId);
+            // 이미 한도를 초과한 경우, 빈 응답 또는 에러 처리. 여기서는 빈 응답을 반환.
+            return new RecommendDtos.Response(res.version(), Collections.emptyList(), null);
+        }
+
         UserEmotionInput input = inputRepo.save(UserEmotionInput.builder()
                 .user(userRef)
                 .inputText(text)
                 .build());
 
+        // 저장 가능한 개수만큼만 모델 응답을 잘라냄
         List<ModelServerClient.ModelRecommendItem> topItems = res.items().stream()
                 .sorted((r1, r2) -> Double.compare(r2.similarity(), r1.similarity()))
-                .limit(MAX_DAILY_RECOMMENDATIONS)
+                .limit(canSaveCount)
                 .collect(Collectors.toList());
 
         List<Recommendation> recommendations = topItems.stream()
@@ -133,16 +127,10 @@ public class RecommendService {
                     Movie movie = movieMap.get(it.movie_id());
                     MovieSummaryResponse movieSummary;
                     if (movie != null) {
-                        movieSummary = new MovieSummaryResponse(
-                                movie.getId(), movie.getTmdbId(), movie.getTitle(), movie.getPosterUrl(),
-                                movie.getGenre(), movie.getReleaseDate(), movie.getVoteAverage()
-                        );
+                        movieSummary = new MovieSummaryResponse(movie.getId(), movie.getTmdbId(), movie.getTitle(), movie.getPosterUrl(), movie.getGenre(), movie.getReleaseDate(), movie.getVoteAverage());
                     } else {
                         log.warn("Movie not found in DB for movieId={}, using fallback data", it.movie_id());
-                        movieSummary = new MovieSummaryResponse(
-                                it.movie_id(), null, it.title(), null,
-                                it.genres().stream().findFirst().orElse(null), null, null
-                        );
+                        movieSummary = new MovieSummaryResponse(it.movie_id(), null, it.title(), null, it.genres().stream().findFirst().orElse(null), null, null);
                     }
                     return new RecommendDtos.RecommendItemResponse(movieSummary, it.similarity());
                 })
@@ -151,6 +139,7 @@ public class RecommendService {
         return new RecommendDtos.Response(res.version(), items, input.getId());
     }
 
+    // ... (saveOrUpdateCalendarEntry 메서드는 이전과 동일)
     private void saveOrUpdateCalendarEntry(Long userId, String text, User userRef) {
         LocalDate today = LocalDate.now();
         CalendarEntry entry = calendarEntryRepository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, today)
@@ -162,7 +151,6 @@ public class RecommendService {
                             .userInputText(text) // 생성 시에만 텍스트 설정
                             .build();
                 });
-
         calendarEntryRepository.save(entry);
     }
 }
