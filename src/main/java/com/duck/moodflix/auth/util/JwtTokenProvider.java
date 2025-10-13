@@ -99,10 +99,15 @@ public class JwtTokenProvider {
             Header header = jws.getHeader();
             Claims c = jws.getPayload();
 
+            // HS384 알고리즘 강제 검사
+            if (!algName.equals(header.getAlgorithm())) {
+                log.warn("[JWT] invalid algorithm: expected=HS384, actual={}", header.getAlgorithm());
+                return false;
+            }
+
             if (log.isDebugEnabled()) {
-                log.debug("[JWT] validate ok: alg={}, sub={}, role={}, iat={}, exp={}, key.fp={}",
-                        header.getAlgorithm(), c.getSubject(), c.get("role"),
-                        c.getIssuedAt(), c.getExpiration(), keyFingerprint);
+                log.debug("[JWT] validate ok: alg={}, exp={}, key.fp={}",
+                        header.getAlgorithm(), c.getExpiration(), keyFingerprint);
             }
             return true;
 

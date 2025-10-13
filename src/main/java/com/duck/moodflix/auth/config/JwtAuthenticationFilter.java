@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 
-
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -34,9 +33,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        log.debug("JwtAuthenticationFilter start: {} {}", request.getMethod(), request.getRequestURI());
         String token = resolveToken(request);
-        log.debug("Resolved token: {}", token != null ? token : "null");
 
         if (token != null && jwtTokenProvider.validateToken(token)) {
             try {
@@ -71,10 +68,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private String resolveToken(HttpServletRequest request) {
         String bearerToken = request.getHeader("Authorization");
-        log.debug("Authorization header: {}", bearerToken);
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             String token = bearerToken.substring(7).trim();
-            log.debug("Extracted token: {}", token);
             return StringUtils.hasText(token) ? token : null;
         }
         return null;
