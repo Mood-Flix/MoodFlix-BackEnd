@@ -76,4 +76,12 @@ public class CalendarEntry {
         this.moodEmoji = moodEmoji;
         this.updatedAt = LocalDateTime.now();
     }
+
+    /**
+     * 추천을 생성한 사용자 입력 텍스트를 갱신합니다.
+     * 이 메서드는 note나 moodEmoji 필드를 변경하지 않습니다.
+     */
+    public void updateUserInputText(String userInputText) {
+        this.userInputText = userInputText;
+    }
 }
