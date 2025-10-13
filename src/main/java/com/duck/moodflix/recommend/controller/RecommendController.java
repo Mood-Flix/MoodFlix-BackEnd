@@ -52,6 +52,10 @@ public class RecommendController {
 
         if (isNumeric(username)) {
             userId = Long.parseLong(username);
+            if (!userRepository.existsByUserIdAndStatus(userId, UserStatus.ACTIVE)) {
+                log.warn("Inactive or non-existent user: userId={}", userId);
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User is not active");
+            }
         } else {
             userId = userRepository.findIdByEmailAndStatus(username, UserStatus.ACTIVE)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unknown user"));

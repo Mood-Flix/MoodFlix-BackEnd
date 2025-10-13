@@ -33,4 +33,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("select u.userId from User u where u.email = :email and u.status = :status")
     Optional<Long> findIdByEmailAndStatus(@Param("email") String email,
                                           @Param("status") UserStatus status);
+    // 수정: 'id' → 'userId'로 메서드 이름 변경 (엔티티 속성과 일치)
+    boolean existsByUserIdAndStatus(Long userId, UserStatus status);
 }
