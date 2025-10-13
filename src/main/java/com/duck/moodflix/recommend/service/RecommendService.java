@@ -12,6 +12,7 @@ import com.duck.moodflix.recommend.dto.RecommendDtos;
 import com.duck.moodflix.recommend.repository.RecommendationRepository;
 import com.duck.moodflix.recommend.repository.UserEmotionInputRepository;
 import com.duck.moodflix.users.domain.entity.User;
+// [수정] 올바른 Role enum을 임포트합니다.
 import com.duck.moodflix.users.domain.entity.enums.Role;
 import com.duck.moodflix.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -53,64 +54,69 @@ public class RecommendService {
         }
 
         return Mono.fromCallable(() -> {
-                    // 사용자 조회 및 역할 확인 (블로킹)
                     User user = userRepo.findById(userId)
                             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-                    // 관리자일 경우, 횟수 제한 로직을 건너뜀
+                    // [수정] UserRole -> Role
                     if (user.getRole() == Role.ADMIN) {
                         log.info("Admin user [{}] - bypassing recommendation limit.", userId);
-                        return -1L; // 관리자는 제한 없음을 의미하는 값
+                        return new Object[]{ -1L, user.getRole() };
                     }
 
-                    // 일반 사용자일 경우, 당일 추천 횟수 확인 (블로킹)
                     LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
                     LocalDateTime endOfDay = LocalDate.now().atTime(23, 59, 59, 999999999);
-                    return recRepo.countByUserUserIdAndCreatedAtBetween(userId, startOfDay, endOfDay);
+                    long count = recRepo.countByUserUserIdAndCreatedAtBetween(userId, startOfDay, endOfDay);
+                    return new Object[]{ count, user.getRole() };
                 })
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(count -> {
-                    // 관리자가 아닐 경우에만 횟수 체크
+                .flatMap(result -> {
+                    long count = (long) result[0];
+                    // [수정] UserRole -> Role
+                    Role userRole = (Role) result[1];
+
                     if (count != -1L && count >= MAX_DAILY_RECOMMENDATIONS) {
                         return Mono.error(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                                 "Daily recommendation limit (" + MAX_DAILY_RECOMMENDATIONS + ") reached"));
                     }
 
                     int topN;
-                    if (count == -1L) { // 관리자
+                    if (count == -1L) {
                         topN = Optional.ofNullable(req.topN()).orElse(20);
-                    } else { // 일반 사용자
-                        topN = Math.min(Optional.ofNullable(req.topN()).orElse(20), MAX_DAILY_RECOMMENDATIONS - count.intValue());
+                    } else {
+                        topN = Math.min(Optional.ofNullable(req.topN()).orElse(20), MAX_DAILY_RECOMMENDATIONS - (int) count);
                     }
                     String text = Optional.ofNullable(req.text()).orElse("");
 
-                    // 모델 서버 호출 (논블로킹) -> 결과 저장 (블로킹)
                     return modelClient.recommendByText(text, topN)
-                            .flatMap(res -> saveAllReactive(userId, text, res));
+                            .flatMap(res -> saveAllReactive(userId, text, res, userRole));
                 });
     }
 
-    private Mono<RecommendDtos.Response> saveAllReactive(Long userId, String text, ModelServerClient.ModelRecommendResponse res) {
-        return Mono.fromCallable(() -> saveAllBlocking(userId, text, res))
+    // [수정] UserRole -> Role
+    private Mono<RecommendDtos.Response> saveAllReactive(Long userId, String text, ModelServerClient.ModelRecommendResponse res, Role userRole) {
+        return Mono.fromCallable(() -> saveAllBlocking(userId, text, res, userRole))
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnError(error -> log.error("Error during saveAll operation: {}", error.getMessage(), error))
                 .onErrorMap(e -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save recommendation data.", e));
     }
 
     @Transactional
-    public RecommendDtos.Response saveAllBlocking(Long userId, String text, ModelServerClient.ModelRecommendResponse res) {
+    // [수정] UserRole -> Role
+    public RecommendDtos.Response saveAllBlocking(Long userId, String text, ModelServerClient.ModelRecommendResponse res, Role userRole) {
         log.debug("Saving recommendation for userId={}, text={}", userId, text);
         User userRef = userRepo.getReferenceById(userId);
 
-        // 레이스 컨디션 해결을 위한 트랜잭션 내 재확인
-        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
-        LocalDateTime endOfDay = LocalDate.now().atTime(23, 59, 59, 999999999);
-        long currentCount = recRepo.countByUserUserIdAndCreatedAtBetween(userId, startOfDay, endOfDay);
-        int canSaveCount = MAX_DAILY_RECOMMENDATIONS - (int) currentCount;
+        // [수정] UserRole -> Role
+        if (userRole != Role.ADMIN) {
+            LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+            LocalDateTime endOfDay = LocalDate.now().atTime(23, 59, 59, 999999999);
+            long currentCount = recRepo.countByUserUserIdAndCreatedAtBetween(userId, startOfDay, endOfDay);
+            int canSaveCount = MAX_DAILY_RECOMMENDATIONS - (int) currentCount;
 
-        if (canSaveCount <= 0) {
-            log.warn("Race condition detected for userId={}. Daily limit reached within transaction.", userId);
-            return new RecommendDtos.Response(res.version(), Collections.emptyList(), null);
+            if (canSaveCount <= 0) {
+                log.warn("Race condition detected for userId={}. Daily limit reached within transaction.", userId);
+                return new RecommendDtos.Response(res.version(), Collections.emptyList(), null);
+            }
         }
 
         UserEmotionInput input = inputRepo.save(UserEmotionInput.builder()
@@ -118,10 +124,11 @@ public class RecommendService {
                 .inputText(text)
                 .build());
 
-        // 저장 가능한 개수만큼만 모델 응답을 잘라냄
+        int limit = (userRole == Role.ADMIN) ? res.items().size() : MAX_DAILY_RECOMMENDATIONS - (int) recRepo.countByUserUserIdAndCreatedAtBetween(userId, LocalDateTime.now().toLocalDate().atStartOfDay(), LocalDateTime.now().toLocalDate().atTime(23, 59, 59));
+
         List<ModelServerClient.ModelRecommendItem> topItems = res.items().stream()
                 .sorted((r1, r2) -> Double.compare(r2.similarity(), r1.similarity()))
-                .limit(canSaveCount)
+                .limit(limit)
                 .collect(Collectors.toList());
 
         List<Recommendation> recommendations = topItems.stream()
@@ -159,21 +166,15 @@ public class RecommendService {
 
     private void saveOrUpdateCalendarEntry(Long userId, String text, User userRef) {
         LocalDate today = LocalDate.now();
-
-        // 1. user_id와 date로 기존 엔트리를 찾거나, 없으면 새로 생성합니다.
         CalendarEntry entry = calendarEntryRepository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, today)
                 .orElseGet(() -> {
                     log.info("Creating new CalendarEntry for userId={}, date={}", userId, today);
                     return CalendarEntry.builder()
                             .user(userRef)
                             .date(today)
+                            .userInputText(text)
                             .build();
                 });
-
-        // 2. [핵심] 추천을 유발한 최신 텍스트만 갱신하고, note와 moodEmoji는 그대로 유지합니다.
-        entry.updateUserInputText(text);
-
-        // 3. 변경된 내용을 저장합니다.
         calendarEntryRepository.save(entry);
     }
 }
