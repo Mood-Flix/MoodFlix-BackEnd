@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 
-
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -32,17 +31,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenProvider jwtTokenProvider;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
         String token = resolveToken(request);
 
-        // [수정] 토큰 유효성, 기존 인증 여부 확인
-        if (token != null
-                && jwtTokenProvider.validateToken(token)
-                && SecurityContextHolder.getContext().getAuthentication() == null) {
-
-            // [수정] NumberFormatException 예외 처리
+        if (token != null && jwtTokenProvider.validateToken(token)) {
             try {
                 Claims claims = jwtTokenProvider.getClaimsFromToken(token);
+                log.debug("Claims: sub={}, role={}", claims.getSubject(), claims.get("role"));
                 Long userId = Long.parseLong(claims.getSubject());
                 String role = claims.get("role", String.class);
 
@@ -54,33 +50,27 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 UserDetails userDetails = new User(userId.toString(), "", authorities);
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(userDetails, null, authorities);
-
-                // [추가 개선] 요청 컨텍스트(IP 주소 등)를 인증 객체에 저장
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-
+                log.debug("Authentication set: {}", SecurityContextHolder.getContext().getAuthentication());
             } catch (NumberFormatException ex) {
-                log.warn("Invalid JWT subject (non-numeric). Ignoring token.", ex);
+                log.warn("Invalid JWT subject (non-numeric): {}", ex.getMessage());
+            } catch (Exception ex) {
+                log.warn("Failed to process token: {}", ex.getMessage(), ex);
             }
+        } else {
+            log.debug("Invalid or missing token: {}", token);
         }
 
         filterChain.doFilter(request, response);
+        log.debug("JwtAuthenticationFilter end: SecurityContext={}", SecurityContextHolder.getContext().getAuthentication());
     }
 
-    /**
-     * 요청 헤더(Authorization)에서 'Bearer ' 접두사를 제거하고 토큰 값만 추출합니다.
-     * @param request HttpServletRequest
-     * @return String | null 추출된 토큰 또는 null
-     */
-    // JwtAuthenticationFilter.java
     private String resolveToken(HttpServletRequest request) {
         String bearerToken = request.getHeader("Authorization");
-        if (log.isDebugEnabled()) {
-            log.debug("Authorization header present: {}", StringUtils.hasText(bearerToken));
-        }
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7);
+            String token = bearerToken.substring(7).trim();
+            return StringUtils.hasText(token) ? token : null;
         }
         return null;
     }

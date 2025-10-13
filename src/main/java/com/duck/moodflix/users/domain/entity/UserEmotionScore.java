@@ -1,6 +1,7 @@
 package com.duck.moodflix.users.domain.entity;
 
 import com.duck.moodflix.emotion.domain.entity.EmotionTag;
+import com.duck.moodflix.recommend.domain.entity.UserEmotionInput;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
