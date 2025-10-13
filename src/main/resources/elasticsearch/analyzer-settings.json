@@ -1,38 +1,35 @@
 {
   "index": { "max_ngram_diff": 20 },
   "analysis": {
-    "analyzer": {
-      "korean_analyzer": {
-        "type": "custom",
-        "tokenizer": "nori_tokenizer",
-        "filter": ["nori_pos_filter"]
+    "char_filter": {
+      "nfkc_normalizer": {
+        "type": "icu_normalizer",
+        "name": "nfkc",
+        "mode": "compose"
       },
-
-
-      "chosung_edge_analyzer": {
-        "type": "custom",
-        "tokenizer": "keyword",
-        "filter": ["lowercase", "edge_ngram_filter"]
+      "punctuation_normalizer": {
+        "type": "mapping",
+        "mappings": [
+          "： => :",
+          "‐ => -",
+          "– => -",
+          "— => -"
+        ]
       },
-
-      "chosung_ngram_analyzer": {
-        "type": "custom",
-        "tokenizer": "keyword",
-        "filter": ["lowercase", "ngram_filter"]
+      "whitespace_collapse": {
+        "type": "pattern_replace",
+        "pattern": "\\s+",
+        "replacement": " "
       },
-
-
-      "keyword_lower": {
-        "type": "custom",
-        "tokenizer": "keyword",
-        "filter": ["lowercase"]
+      "trim_leading": {
+        "type": "pattern_replace",
+        "pattern": "^\\s+",
+        "replacement": ""
       },
-
-
-      "chosung_search_analyzer": {
-        "type": "custom",
-        "tokenizer": "keyword",
-        "filter": ["lowercase"]
+      "trim_trailing": {
+        "type": "pattern_replace",
+        "pattern": "\\s+$",
+        "replacement": ""
       }
     },
     "filter": {
@@ -41,7 +38,47 @@
         "stoptags": ["E","IC","J","MAG","MAJ","MM","SP","SSC","SSO","SC","SE","XPN","XSA","XSN","XSV","UNA","NA","VSV"]
       },
       "edge_ngram_filter": { "type": "edge_ngram", "min_gram": 1, "max_gram": 10 },
-      "ngram_filter":      { "type": "ngram",      "min_gram": 2, "max_gram": 10 }
+      "ngram_filter":      { "type": "ngram",      "min_gram": 2,  "max_gram": 10 }
+    },
+    "analyzer": {
+      "korean_analyzer": {
+        "type": "custom",
+        "tokenizer": "nori_tokenizer",
+        "filter": ["nori_pos_filter"]
+      },
+      "chosung_edge_analyzer": {
+        "type": "custom",
+        "tokenizer": "keyword",
+        "filter": ["lowercase", "edge_ngram_filter"]
+      },
+      "chosung_ngram_analyzer": {
+        "type": "custom",
+        "tokenizer": "keyword",
+        "filter": ["lowercase", "ngram_filter"]
+      },
+      "keyword_lower": {
+        "type": "custom",
+        "tokenizer": "keyword",
+        "filter": ["lowercase"]
+      },
+      "chosung_search_analyzer": {
+        "type": "custom",
+        "tokenizer": "keyword",
+        "filter": ["lowercase"]
+      }
+    },
+    "normalizer": {
+      "title_exact_norm": {
+        "type": "custom",
+        "char_filter": [
+          "nfkc_normalizer",
+          "punctuation_normalizer",
+          "whitespace_collapse",
+          "trim_leading",
+          "trim_trailing"
+        ],
+        "filter": ["lowercase"]
+      }
     }
   }
 }
