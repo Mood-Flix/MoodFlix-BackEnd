@@ -55,9 +55,14 @@ public class CalendarService {
     }
 
     public Mono<CalendarDtos.EntryResponse> getEntryByDate(Long userId, LocalDate date) {
-        return Mono.fromCallable(() -> repository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, date)
-                        .map(this::mapToEntryResponse)
-                        .orElseGet(() -> createEmptyEntryResponse(userId, date)))
+        // [해결!] 블로킹 작업을 fromCallable로 감쌉니다.
+        return Mono.fromCallable(() ->
+                        repository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, date)
+                                .map(this::mapToEntryResponse)
+                                // Optional이 비어있을 경우를 처리하는 로직은 여기에 포함합니다.
+                                .orElseGet(() -> createEmptyEntryResponse(userId, date))
+                )
+                // 블로킹 작업 전용 스레드에서 실행하도록 지시합니다.
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
