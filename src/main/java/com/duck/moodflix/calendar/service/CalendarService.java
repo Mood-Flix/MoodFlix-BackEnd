@@ -11,6 +11,7 @@ import com.duck.moodflix.users.domain.entity.User;
 import com.duck.moodflix.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -109,9 +110,24 @@ public class CalendarService {
                             .build();
                 });
 
-        CalendarEntry savedEntry = repository.save(entry);
-        // 저장 후 DTO로 변환하여 반환 (이때도 N+1이 발생하지 않도록 mapToEntryResponse 사용)
-        return mapToEntryResponse(savedEntry);
+        try {
+            // 2. 일단 저장을 시도함
+            CalendarEntry savedEntry = repository.save(entry);
+            return mapToEntryResponse(savedEntry);
+        } catch (DataIntegrityViolationException e) {
+            // 3. [핵심] 저장 실패 시 (충돌 발생 시), 다른 스레드가 방금 만든 데이터를 다시 조회
+            log.warn("Race condition detected for userId={}, date={}. Retrying update.", userId, req.date());
+
+            // 이제는 반드시 데이터가 있으므로 findBy...를 사용 (findFirst... 불필요)
+            CalendarEntry existingEntryAfterConflict = repository.findByUserIdAndDate(userId, req.date())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Entry not found after data integrity violation. Inconsistent state."));
+
+            // 현재 요청의 데이터로 덮어쓴 후 다시 저장
+            existingEntryAfterConflict.updateNoteAndMood(req.note(), req.moodEmoji());
+            CalendarEntry updatedEntry = repository.save(existingEntryAfterConflict);
+            return mapToEntryResponse(updatedEntry);
+        }
     }
 
     // [수정 3] N+1 문제 해결
