@@ -11,7 +11,6 @@ import com.duck.moodflix.users.domain.entity.User;
 import com.duck.moodflix.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -19,11 +18,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers; // Schedulers 임포트
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -37,97 +40,79 @@ public class CalendarService {
     private final MovieRepository movieRepository;
     private static final int MAX_RECOMMENDATIONS = 5;
 
-    // 월별 엔트리 조회
+    // [수정 1] 모든 DB 접근 코드를 fromCallable과 boundedElastic으로 감싸 논블로킹으로 처리
     public Mono<List<CalendarDtos.EntryResponse>> getEntriesByUserAndMonth(Long userId, int year, int month) {
-        YearMonth yearMonth = YearMonth.of(year, month);
-        LocalDate startDate = yearMonth.atDay(1);
-        LocalDate endDate = yearMonth.atEndOfMonth();
-        return Mono.just(repository.findByUserUserIdAndDateBetween(userId, startDate, endDate).stream()
-                .map(this::mapToEntryResponse)
-                .collect(Collectors.toList()));
+        return Mono.fromCallable(() -> {
+                    YearMonth yearMonth = YearMonth.of(year, month);
+                    LocalDate startDate = yearMonth.atDay(1);
+                    LocalDate endDate = yearMonth.atEndOfMonth();
+                    return repository.findByUserUserIdAndDateBetween(userId, startDate, endDate)
+                            .stream()
+                            .map(this::mapToEntryResponse) // mapToEntryResponse도 블로킹이므로 이 안에서 실행
+                            .collect(Collectors.toList());
+                })
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
-    // 특정 날짜의 엔트리 조회
     public Mono<CalendarDtos.EntryResponse> getEntryByDate(Long userId, LocalDate date) {
-        return Mono.justOrEmpty(repository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, date))
-                .map(this::mapToEntryResponse)
-                .switchIfEmpty(Mono.just(createEmptyEntryResponse(userId, date)));
+        return Mono.fromCallable(() -> repository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, date)
+                        .map(this::mapToEntryResponse)
+                        .orElseGet(() -> createEmptyEntryResponse(userId, date)))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
-    // 엔트리 저장/수정
-    @Transactional
+    // [수정 2] @Transactional이 붙은 블로킹 로직을 별도 private 메서드로 분리
     public Mono<CalendarDtos.EntryResponse> saveOrUpdateEntry(Long userId, CalendarDtos.EntryRequest req) {
+        return Mono.fromCallable(() -> saveOrUpdateEntryBlocking(userId, req))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    public Mono<Void> deleteEntryByDate(Long userId, LocalDate date) {
+        return Mono.fromCallable(() -> {
+                    deleteEntryByDateBlocking(userId, date);
+                    return null; // Callable<Void>는 null을 리턴해야 함
+                }).subscribeOn(Schedulers.boundedElastic())
+                .then();
+    }
+
+    @Transactional
+    public void deleteEntryByDateBlocking(Long userId, LocalDate date) {
+        CalendarEntry entry = repository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, date)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Entry not found"));
+        repository.delete(entry);
+        log.info("Deleted CalendarEntry for userId={}, date={}", userId, date);
+    }
+
+    @Transactional
+    public CalendarDtos.EntryResponse saveOrUpdateEntryBlocking(Long userId, CalendarDtos.EntryRequest req) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        try {
-            return Mono.justOrEmpty(repository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, req.date()))
-                    .map(entry -> {
-                        entry.updateNoteAndMood(req.note(), req.moodEmoji());
-                        repository.save(entry);
-                        log.info("Updated CalendarEntry for userId={}, date={}", userId, req.date());
-                        return entry;
-                    })
-                    .switchIfEmpty(Mono.just(repository.save(CalendarEntry.builder()
+        CalendarEntry entry = repository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, req.date())
+                .map(existingEntry -> {
+                    existingEntry.updateNoteAndMood(req.note(), req.moodEmoji());
+                    log.info("Updated CalendarEntry for userId={}, date={}", userId, req.date());
+                    return existingEntry;
+                })
+                .orElseGet(() -> {
+                    log.info("Created new CalendarEntry for userId={}, date={}", userId, req.date());
+                    return CalendarEntry.builder()
                             .user(user)
                             .date(req.date())
                             .note(req.note())
                             .moodEmoji(req.moodEmoji())
-                            .movie(null)
-                            .recommendation(null)
-                            .userInputText(null)
-                            .build())))
-                    .doOnSuccess(entry -> log.info("Created new CalendarEntry for userId={}, date={}", userId, req.date()))
-                    .map(this::mapToEntryResponse);
-        } catch (DataIntegrityViolationException e) {
-            log.warn("Duplicate CalendarEntry attempted for userId={}, date={}. Updating existing.", userId, req.date());
-            return Mono.justOrEmpty(repository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, req.date()))
-                    .map(entry -> {
-                        entry.updateNoteAndMood(req.note(), req.moodEmoji());
-                        repository.save(entry);
-                        log.info("Updated existing CalendarEntry for userId={}, date={}", userId, req.date());
-                        return entry;
-                    })
-                    .map(this::mapToEntryResponse)
-                    .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                            "CalendarEntry not found after duplicate attempt")));
-        }
+                            .build();
+                });
+
+        CalendarEntry savedEntry = repository.save(entry);
+        // 저장 후 DTO로 변환하여 반환 (이때도 N+1이 발생하지 않도록 mapToEntryResponse 사용)
+        return mapToEntryResponse(savedEntry);
     }
 
-    // 엔트리 삭제
-    @Transactional
-    public Mono<Void> deleteEntryByDate(Long userId, LocalDate date) {
-        return Mono.justOrEmpty(repository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, date))
-                .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Entry not found")))
-                .doOnNext(repository::delete)
-                .doOnSuccess(v -> log.info("Deleted CalendarEntry for userId={}, date={}", userId, date))
-                .then();
-    }
-
-    // CalendarEntry를 EntryResponse로 변환
+    // [수정 3] N+1 문제 해결
     private CalendarDtos.EntryResponse mapToEntryResponse(CalendarEntry entry) {
-        LocalDateTime startOfDay = entry.getDate().atStartOfDay();
-        LocalDateTime endOfDay = entry.getDate().atTime(23, 59, 59, 999999999);
-        Pageable pageable = PageRequest.of(0, MAX_RECOMMENDATIONS);
-
-        List<Recommendation> recommendations = recommendationRepository.findByUserUserIdAndCreatedAtBetween(
-                entry.getUser().getUserId(), startOfDay, endOfDay, pageable);
-
-        log.info("Recommendations for userId={}, date={}: total={}",
-                entry.getUser().getUserId(), entry.getDate(), recommendations.size());
-
-        List<CalendarDtos.RecommendationResponse> recommendationResponses = recommendations.stream()
-                .map(reco -> {
-                    Movie movie = movieRepository.findById(reco.getMovieId()).orElse(null);
-                    return new CalendarDtos.RecommendationResponse(
-                            reco.getId(),
-                            reco.getMovieId(),
-                            movie != null ? movie.getTitle() : "Unknown",
-                            reco.getSimilarityScore(),
-                            reco.getUserEmotionInput() != null ? reco.getUserEmotionInput().getInputText() : "Unknown"
-                    );
-                })
-                .collect(Collectors.toList());
+        List<CalendarDtos.RecommendationResponse> recommendationResponses = getRecommendationResponses(
+                entry.getUser().getUserId(), entry.getDate());
 
         return new CalendarDtos.EntryResponse(
                 entry.getId(),
@@ -138,21 +123,39 @@ public class CalendarService {
         );
     }
 
-    // CalendarEntry가 없을 경우 빈 응답 생성
     private CalendarDtos.EntryResponse createEmptyEntryResponse(Long userId, LocalDate date) {
+        List<CalendarDtos.RecommendationResponse> recommendationResponses = getRecommendationResponses(userId, date);
+        return new CalendarDtos.EntryResponse(null, date, null, null, recommendationResponses);
+    }
+
+    // N+1 해결을 위한 공통 로직 추출
+    private List<CalendarDtos.RecommendationResponse> getRecommendationResponses(Long userId, LocalDate date) {
         LocalDateTime startOfDay = date.atStartOfDay();
         LocalDateTime endOfDay = date.atTime(23, 59, 59, 999999999);
         Pageable pageable = PageRequest.of(0, MAX_RECOMMENDATIONS);
 
+        // 1. 추천 목록을 먼저 조회
         List<Recommendation> recommendations = recommendationRepository.findByUserUserIdAndCreatedAtBetween(
                 userId, startOfDay, endOfDay, pageable);
 
-        log.info("Empty entry recommendations for userId={}, date={}: total={}",
-                userId, date, recommendations.size());
+        if (recommendations.isEmpty()) {
+            return Collections.emptyList();
+        }
 
-        List<CalendarDtos.RecommendationResponse> recommendationResponses = recommendations.stream()
+        // 2. 추천 목록에서 영화 ID 리스트를 추출
+        List<Long> movieIds = recommendations.stream()
+                .map(Recommendation::getMovieId)
+                .distinct()
+                .collect(Collectors.toList());
+
+        // 3. 영화 ID 리스트를 사용해 영화 정보를 단 한 번의 쿼리로 조회
+        Map<Long, Movie> movieMap = movieRepository.findAllById(movieIds).stream()
+                .collect(Collectors.toMap(Movie::getId, Function.identity()));
+
+        // 4. 조회된 영화 정보(Map)를 사용해 DTO 조립 (DB 추가 접근 없음)
+        return recommendations.stream()
                 .map(reco -> {
-                    Movie movie = movieRepository.findById(reco.getMovieId()).orElse(null);
+                    Movie movie = movieMap.get(reco.getMovieId());
                     return new CalendarDtos.RecommendationResponse(
                             reco.getId(),
                             reco.getMovieId(),
@@ -162,13 +165,5 @@ public class CalendarService {
                     );
                 })
                 .collect(Collectors.toList());
-
-        return new CalendarDtos.EntryResponse(
-                null,
-                date,
-                null,
-                null,
-                recommendationResponses
-        );
     }
 }

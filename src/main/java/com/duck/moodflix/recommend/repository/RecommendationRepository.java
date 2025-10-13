@@ -19,7 +19,7 @@ public interface RecommendationRepository extends JpaRepository<Recommendation, 
     List<Recommendation> findByUserEmotionInputId(Long id);
 
     // 사용자별 최근 기록 조회
-    @Query("SELECT r FROM Recommendation r WHERE r.user.userId = :userId AND r.createdAt BETWEEN :start AND :end " +
+    @Query("SELECT r FROM Recommendation r LEFT JOIN FETCH r.userEmotionInput WHERE r.user.userId = :userId AND r.createdAt BETWEEN :start AND :end " +
             "ORDER BY r.createdAt DESC")
     List<Recommendation> findByUserUserIdAndCreatedAtBetween(
             @Param("userId") Long userId,
