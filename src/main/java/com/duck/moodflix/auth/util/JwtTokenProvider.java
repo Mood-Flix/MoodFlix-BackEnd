@@ -19,6 +19,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.Date;
+import java.util.Objects;
 
 @Slf4j
 @Component
@@ -54,7 +55,7 @@ public class JwtTokenProvider {
 
         String token = Jwts.builder()
                 .subject(Long.toString(userId))
-                .claim("role", role.name())
+                .claim("role", Objects.requireNonNull(role, "role must not be null").name())
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(key, Jwts.SIG.HS384) // ← 발급 alg 고정
