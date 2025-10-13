@@ -53,8 +53,9 @@ public class JwtTokenProvider {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + expirationMilliseconds);
 
+        Long safeUserId = Objects.requireNonNull(userId, "userId must not be null");
         String token = Jwts.builder()
-                .subject(Long.toString(userId))
+                .subject(safeUserId.toString())
                 .claim("role", Objects.requireNonNull(role, "role must not be null").name())
                 .issuedAt(now)
                 .expiration(expiryDate)
