@@ -1,26 +1,37 @@
 package com.duck.moodflix.recommend.service;
 
+import com.duck.moodflix.calendar.domain.entity.CalendarEntry;
+import com.duck.moodflix.calendar.repository.CalendarEntryRepository;
 import com.duck.moodflix.movie.domain.entity.Movie;
 import com.duck.moodflix.movie.dto.response.MovieSummaryResponse;
+import com.duck.moodflix.movie.repository.MovieRepository;
 import com.duck.moodflix.recommend.client.ModelServerClient;
 import com.duck.moodflix.recommend.domain.entity.Recommendation;
 import com.duck.moodflix.recommend.domain.entity.UserEmotionInput;
 import com.duck.moodflix.recommend.dto.RecommendDtos;
 import com.duck.moodflix.recommend.repository.RecommendationRepository;
 import com.duck.moodflix.recommend.repository.UserEmotionInputRepository;
+import com.duck.moodflix.users.domain.entity.User;
+// [수정] 올바른 Role enum을 임포트합니다.
+import com.duck.moodflix.users.domain.entity.enums.Role;
 import com.duck.moodflix.users.repository.UserRepository;
-import com.duck.moodflix.movie.repository.MovieRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.util.ArrayList;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,87 +39,142 @@ import java.util.stream.Collectors;
 public class RecommendService {
 
     private static final Logger log = LoggerFactory.getLogger(RecommendService.class);
+    private static final int MAX_DAILY_RECOMMENDATIONS = 5;
 
     private final ModelServerClient modelClient;
     private final UserEmotionInputRepository inputRepo;
     private final RecommendationRepository recRepo;
     private final UserRepository userRepo;
     private final MovieRepository movieRepo;
-
-    public record Request(String text, Integer topN) {}
-    public record Item(Long movieId, String title, List<String> genres, double similarity, String posterUrl) {}
-    public record Response(String version, List<Item> items, Long logId) {}
+    private final CalendarEntryRepository calendarEntryRepository;
 
     public Mono<RecommendDtos.Response> byText(Long userId, RecommendDtos.Request req) {
-        if (userId == null) throw new IllegalArgumentException("userId is required");
+        if (userId == null) {
+            return Mono.error(new IllegalArgumentException("userId is required"));
+        }
 
-        String text = Optional.ofNullable(req.text()).orElse("");
-        int topN = Optional.ofNullable(req.topN()).orElse(20);
+        return Mono.fromCallable(() -> {
+                    User user = userRepo.findById(userId)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        return modelClient.recommendByText(text, topN)
-                .publishOn(Schedulers.boundedElastic()) // 리액티브 + JPA 안전 구역
-                .map(res -> saveAll(userId, text, res))
-                .doOnError(error -> log.error("Error in byText: {}", error.getMessage(), error));
+                    // [수정] UserRole -> Role
+                    if (user.getRole() == Role.ADMIN) {
+                        log.info("Admin user [{}] - bypassing recommendation limit.", userId);
+                        return new Object[]{ -1L, user.getRole() };
+                    }
+
+                    LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+                    LocalDateTime endOfDay = LocalDate.now().atTime(23, 59, 59, 999999999);
+                    long count = recRepo.countByUserUserIdAndCreatedAtBetween(userId, startOfDay, endOfDay);
+                    return new Object[]{ count, user.getRole() };
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(result -> {
+                    long count = (long) result[0];
+                    // [수정] UserRole -> Role
+                    Role userRole = (Role) result[1];
+
+                    if (count != -1L && count >= MAX_DAILY_RECOMMENDATIONS) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                                "Daily recommendation limit (" + MAX_DAILY_RECOMMENDATIONS + ") reached"));
+                    }
+
+                    int topN;
+                    if (count == -1L) {
+                        topN = Optional.ofNullable(req.topN()).orElse(20);
+                    } else {
+                        topN = Math.min(Optional.ofNullable(req.topN()).orElse(20), MAX_DAILY_RECOMMENDATIONS - (int) count);
+                    }
+                    String text = Optional.ofNullable(req.text()).orElse("");
+
+                    return modelClient.recommendByText(text, topN)
+                            .flatMap(res -> saveAllReactive(userId, text, res, userRole));
+                });
+    }
+
+    // [수정] UserRole -> Role
+    private Mono<RecommendDtos.Response> saveAllReactive(Long userId, String text, ModelServerClient.ModelRecommendResponse res, Role userRole) {
+        return Mono.fromCallable(() -> saveAllBlocking(userId, text, res, userRole))
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnError(error -> log.error("Error during saveAll operation: {}", error.getMessage(), error))
+                .onErrorMap(e -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save recommendation data.", e));
     }
 
     @Transactional
-    protected RecommendDtos.Response saveAll(Long userId, String text, ModelServerClient.ModelRecommendResponse res) {
+    // [수정] UserRole -> Role
+    public RecommendDtos.Response saveAllBlocking(Long userId, String text, ModelServerClient.ModelRecommendResponse res, Role userRole) {
         log.debug("Saving recommendation for userId={}, text={}", userId, text);
-        var userRef = userRepo.getReferenceById(userId); // 존재 보장 가정
-        var input = inputRepo.save(UserEmotionInput.builder()
-                .user(userRef) // 연관 주입 (FK not null)
+        User userRef = userRepo.getReferenceById(userId);
+
+        // [수정] UserRole -> Role
+        if (userRole != Role.ADMIN) {
+            LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+            LocalDateTime endOfDay = LocalDate.now().atTime(23, 59, 59, 999999999);
+            long currentCount = recRepo.countByUserUserIdAndCreatedAtBetween(userId, startOfDay, endOfDay);
+            int canSaveCount = MAX_DAILY_RECOMMENDATIONS - (int) currentCount;
+
+            if (canSaveCount <= 0) {
+                log.warn("Race condition detected for userId={}. Daily limit reached within transaction.", userId);
+                return new RecommendDtos.Response(res.version(), Collections.emptyList(), null);
+            }
+        }
+
+        UserEmotionInput input = inputRepo.save(UserEmotionInput.builder()
+                .user(userRef)
                 .inputText(text)
                 .build());
 
-        var rows = new ArrayList<Recommendation>();
-        res.items().forEach(it -> rows.add(
-                Recommendation.builder()
-                        .user(userRef) // 연관 주입
-                        .userEmotionInput(input) // 연관 주입
+        int limit = (userRole == Role.ADMIN) ? res.items().size() : MAX_DAILY_RECOMMENDATIONS - (int) recRepo.countByUserUserIdAndCreatedAtBetween(userId, LocalDateTime.now().toLocalDate().atStartOfDay(), LocalDateTime.now().toLocalDate().atTime(23, 59, 59));
+
+        List<ModelServerClient.ModelRecommendItem> topItems = res.items().stream()
+                .sorted((r1, r2) -> Double.compare(r2.similarity(), r1.similarity()))
+                .limit(limit)
+                .collect(Collectors.toList());
+
+        List<Recommendation> recommendations = topItems.stream()
+                .map(it -> Recommendation.builder()
+                        .user(userRef)
+                        .userEmotionInput(input)
                         .movieId(it.movie_id())
                         .similarityScore(it.similarity())
-                        .build()
-        ));
-        recRepo.saveAll(rows);
-
-        // 영화 정보 조회
-        List<Long> movieIds = res.items().stream()
-                .map(ModelServerClient.ModelRecommendItem::movie_id)
+                        .build())
                 .collect(Collectors.toList());
-        List<Movie> movies = movieRepo.findByIdIn(movieIds);
-        log.debug("Found {} movies for IDs: {}", movies.size(), movieIds);
+        recRepo.saveAll(recommendations);
 
-        var items = res.items().stream()
+        saveOrUpdateCalendarEntry(userId, text, userRef);
+
+        List<Long> movieIds = topItems.stream().map(ModelServerClient.ModelRecommendItem::movie_id).toList();
+        Map<Long, Movie> movieMap = movieRepo.findByIdIn(movieIds).stream()
+                .collect(Collectors.toMap(Movie::getId, Function.identity()));
+
+        List<RecommendDtos.RecommendItemResponse> items = topItems.stream()
                 .map(it -> {
-                    Optional<Movie> movie = movies.stream()
-                            .filter(m -> m.getId().equals(it.movie_id()))
-                            .findFirst();
-                    MovieSummaryResponse movieSummary = movie
-                            .map(m -> new MovieSummaryResponse(
-                                    m.getId(),
-                                    m.getTmdbId(),
-                                    m.getTitle(),
-                                    m.getPosterUrl(),
-                                    m.getGenre(),
-                                    m.getReleaseDate(),
-                                    m.getVoteAverage()
-                            ))
-                            .orElseGet(() -> {
-                                log.warn("Movie not found in DB for movieId={}, using fallback data", it.movie_id());
-                                return new MovieSummaryResponse(
-                                        Long.valueOf(it.movie_id()), // long -> Long
-                                        null, // tmdbId: DB 없음
-                                        it.title(),
-                                        null, // posterUrl
-                                        it.genres().stream().findFirst().orElse(null),
-                                        null, // releaseDate
-                                        null // voteAverage
-                                );
-                            });
+                    Movie movie = movieMap.get(it.movie_id());
+                    MovieSummaryResponse movieSummary;
+                    if (movie != null) {
+                        movieSummary = new MovieSummaryResponse(movie.getId(), movie.getTmdbId(), movie.getTitle(), movie.getPosterUrl(), movie.getGenre(), movie.getReleaseDate(), movie.getVoteAverage());
+                    } else {
+                        log.warn("Movie not found in DB for movieId={}, using fallback data", it.movie_id());
+                        movieSummary = new MovieSummaryResponse(it.movie_id(), null, it.title(), null, it.genres().stream().findFirst().orElse(null), null, null);
+                    }
                     return new RecommendDtos.RecommendItemResponse(movieSummary, it.similarity());
                 })
                 .toList();
 
         return new RecommendDtos.Response(res.version(), items, input.getId());
+    }
+
+    private void saveOrUpdateCalendarEntry(Long userId, String text, User userRef) {
+        LocalDate today = LocalDate.now();
+        CalendarEntry entry = calendarEntryRepository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, today)
+                .orElseGet(() -> {
+                    log.info("Creating new CalendarEntry for userId={}, date={}", userId, today);
+                    return CalendarEntry.builder()
+                            .user(userRef)
+                            .date(today)
+                            .userInputText(text)
+                            .build();
+                });
+        calendarEntryRepository.save(entry);
     }
 }
