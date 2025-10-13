@@ -4,6 +4,7 @@ import com.duck.moodflix.calendar.domain.entity.CalendarEntry;
 import com.duck.moodflix.calendar.repository.CalendarEntryRepository;
 import com.duck.moodflix.movie.domain.entity.Movie;
 import com.duck.moodflix.movie.dto.response.MovieSummaryResponse;
+import com.duck.moodflix.movie.repository.MovieRepository;
 import com.duck.moodflix.recommend.client.ModelServerClient;
 import com.duck.moodflix.recommend.domain.entity.Recommendation;
 import com.duck.moodflix.recommend.domain.entity.UserEmotionInput;
@@ -11,12 +12,11 @@ import com.duck.moodflix.recommend.dto.RecommendDtos;
 import com.duck.moodflix.recommend.repository.RecommendationRepository;
 import com.duck.moodflix.recommend.repository.UserEmotionInputRepository;
 import com.duck.moodflix.users.domain.entity.User;
+import com.duck.moodflix.users.domain.entity.enums.Role;
 import com.duck.moodflix.users.repository.UserRepository;
-import com.duck.moodflix.movie.repository.MovieRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,9 +26,10 @@ import reactor.core.scheduler.Schedulers;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,39 +46,63 @@ public class RecommendService {
     private final MovieRepository movieRepo;
     private final CalendarEntryRepository calendarEntryRepository;
 
-    public record Request(String text, Integer topN) {}
-    public record Item(Long movieId, String title, List<String> genres, double similarity, String posterUrl) {}
-    public record Response(String version, List<Item> items, Long logId) {}
-
     public Mono<RecommendDtos.Response> byText(Long userId, RecommendDtos.Request req) {
-        if (userId == null) throw new IllegalArgumentException("userId is required");
-
-        // 당일 추천 횟수 확인
-        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
-        LocalDateTime endOfDay = LocalDate.now().atTime(23, 59, 59, 999999999);
-        long count = recRepo.countByUserUserIdAndCreatedAtBetween(userId, startOfDay, endOfDay);
-        if (count >= MAX_DAILY_RECOMMENDATIONS) {
-            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-                    "Daily recommendation limit (" + MAX_DAILY_RECOMMENDATIONS + ") reached");
+        if (userId == null) {
+            return Mono.error(new IllegalArgumentException("userId is required"));
         }
 
-        String text = Optional.ofNullable(req.text()).orElse("");
-        int topN = Math.min(Optional.ofNullable(req.topN()).orElse(20), MAX_DAILY_RECOMMENDATIONS - (int) count);
+        // [수정 1] subscribeOn 체이닝 오류 수정 및 관리자 제한 해제 로직 추가
+        return Mono.fromCallable(() -> {
+                    // 사용자 조회 및 역할 확인 (블로킹)
+                    User user = userRepo.findById(userId)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        return modelClient.recommendByText(text, topN)
-                .publishOn(Schedulers.boundedElastic())
-                .map(res -> saveAll(userId, text, res))
-                .doOnError(error -> log.error("Error in byText: {}", error.getMessage(), error))
-                .onErrorMap(DataIntegrityViolationException.class, e ->
-                        new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate calendar entry detected", e));
+                    // 관리자일 경우, 횟수 제한 로직을 건너뜀
+                    if (user.getRole() == Role.USER.ADMIN) {
+                        log.info("Admin user [{}] - bypassing recommendation limit.", userId);
+                        return -1L; // 관리자는 제한 없음을 의미하는 값
+                    }
+
+                    // 일반 사용자일 경우, 당일 추천 횟수 확인 (블로킹)
+                    LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+                    LocalDateTime endOfDay = LocalDate.now().atTime(23, 59, 59, 999999999);
+                    return recRepo.countByUserUserIdAndCreatedAtBetween(userId, startOfDay, endOfDay);
+                })
+                .subscribeOn(Schedulers.boundedElastic()) // 올바른 체이닝
+                .flatMap(count -> {
+                    // 관리자가 아닐 경우에만 횟수 체크
+                    if (count != -1L && count >= MAX_DAILY_RECOMMENDATIONS) {
+                        return Mono.error(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                                "Daily recommendation limit (" + MAX_DAILY_RECOMMENDATIONS + ") reached"));
+                    }
+
+                    int topN;
+                    if (count == -1L) { // 관리자
+                        topN = Optional.ofNullable(req.topN()).orElse(20);
+                    } else { // 일반 사용자
+                        topN = Math.min(Optional.ofNullable(req.topN()).orElse(20), MAX_DAILY_RECOMMENDATIONS - count.intValue());
+                    }
+                    String text = Optional.ofNullable(req.text()).orElse("");
+
+                    // 모델 서버 호출 (논블로킹) -> 결과 저장 (블로킹)
+                    return modelClient.recommendByText(text, topN)
+                            .flatMap(res -> saveAllReactive(userId, text, res));
+                });
+    }
+
+    private Mono<RecommendDtos.Response> saveAllReactive(Long userId, String text, ModelServerClient.ModelRecommendResponse res) {
+        return Mono.fromCallable(() -> saveAllBlocking(userId, text, res))
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnError(error -> log.error("Error during saveAll operation: {}", error.getMessage(), error))
+                .onErrorMap(e -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save recommendation data.", e));
     }
 
     @Transactional
-    protected RecommendDtos.Response saveAll(Long userId, String text, ModelServerClient.ModelRecommendResponse res) {
+    public RecommendDtos.Response saveAllBlocking(Long userId, String text, ModelServerClient.ModelRecommendResponse res) {
         log.debug("Saving recommendation for userId={}, text={}", userId, text);
-        var userRef = userRepo.getReferenceById(userId);
+        User userRef = userRepo.getReferenceById(userId);
 
-        var input = inputRepo.save(UserEmotionInput.builder()
+        UserEmotionInput input = inputRepo.save(UserEmotionInput.builder()
                 .user(userRef)
                 .inputText(text)
                 .build());
@@ -87,89 +112,57 @@ public class RecommendService {
                 .limit(MAX_DAILY_RECOMMENDATIONS)
                 .collect(Collectors.toList());
 
-        var rows = new ArrayList<Recommendation>();
-        topItems.forEach(it -> rows.add(
-                Recommendation.builder()
+        List<Recommendation> recommendations = topItems.stream()
+                .map(it -> Recommendation.builder()
                         .user(userRef)
                         .userEmotionInput(input)
                         .movieId(it.movie_id())
                         .similarityScore(it.similarity())
-                        .build()
-        ));
-        recRepo.saveAll(rows);
-
-        // CalendarEntry 생성/업데이트
-        LocalDate today = LocalDate.now();
-        Optional<CalendarEntry> existingEntry = calendarEntryRepository
-                .findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, today);
-
-        try {
-            if (existingEntry.isPresent()) {
-                CalendarEntry entry = existingEntry.get();
-                entry.updateNoteAndMood(null, null);
-                calendarEntryRepository.save(entry);
-                log.info("Updated CalendarEntry for userId={}, date={}", userId, today);
-            } else {
-                calendarEntryRepository.save(
-                        CalendarEntry.builder()
-                                .user(userRef)
-                                .date(today)
-                                .userInputText(text)
-                                .movie(null)
-                                .recommendation(null)
-                                .note(null)
-                                .moodEmoji(null)
-                                .build()
-                );
-                log.info("Created new CalendarEntry for userId={}, date={}", userId, today);
-            }
-        } catch (DataIntegrityViolationException e) {
-            log.warn("Duplicate CalendarEntry attempted for userId={}, date={}. Attempting to update existing.", userId, today);
-            CalendarEntry existing = calendarEntryRepository
-                    .findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, today)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "CalendarEntry not found after duplicate attempt"));
-            existing.updateNoteAndMood(null, null);
-            calendarEntryRepository.save(existing);
-            log.info("Updated existing CalendarEntry after duplicate attempt for userId={}, date={}", userId, today);
-        }
-
-        List<Long> movieIds = topItems.stream()
-                .map(ModelServerClient.ModelRecommendItem::movie_id)
+                        .build())
                 .collect(Collectors.toList());
-        List<Movie> movies = movieRepo.findByIdIn(movieIds);
-        log.debug("Found {} movies for IDs: {}", movies.size(), movieIds);
+        recRepo.saveAll(recommendations);
 
-        var items = topItems.stream()
+        saveOrUpdateCalendarEntry(userId, text, userRef);
+
+        List<Long> movieIds = topItems.stream().map(ModelServerClient.ModelRecommendItem::movie_id).toList();
+        Map<Long, Movie> movieMap = movieRepo.findByIdIn(movieIds).stream()
+                .collect(Collectors.toMap(Movie::getId, Function.identity()));
+
+        List<RecommendDtos.RecommendItemResponse> items = topItems.stream()
                 .map(it -> {
-                    Optional<Movie> movie = movies.stream()
-                            .filter(m -> m.getId().equals(it.movie_id()))
-                            .findFirst();
-                    MovieSummaryResponse movieSummary = movie
-                            .map(m -> new MovieSummaryResponse(
-                                    m.getId(),
-                                    m.getTmdbId(),
-                                    m.getTitle(),
-                                    m.getPosterUrl(),
-                                    m.getGenre(),
-                                    m.getReleaseDate(),
-                                    m.getVoteAverage()
-                            ))
-                            .orElseGet(() -> {
-                                log.warn("Movie not found in DB for movieId={}, using fallback data", it.movie_id());
-                                return new MovieSummaryResponse(
-                                        Long.valueOf(it.movie_id()),
-                                        null,
-                                        it.title(),
-                                        null,
-                                        it.genres().stream().findFirst().orElse(null),
-                                        null,
-                                        null
-                                );
-                            });
+                    Movie movie = movieMap.get(it.movie_id());
+                    MovieSummaryResponse movieSummary;
+                    if (movie != null) {
+                        movieSummary = new MovieSummaryResponse(
+                                movie.getId(), movie.getTmdbId(), movie.getTitle(), movie.getPosterUrl(),
+                                movie.getGenre(), movie.getReleaseDate(), movie.getVoteAverage()
+                        );
+                    } else {
+                        log.warn("Movie not found in DB for movieId={}, using fallback data", it.movie_id());
+                        movieSummary = new MovieSummaryResponse(
+                                it.movie_id(), null, it.title(), null,
+                                it.genres().stream().findFirst().orElse(null), null, null
+                        );
+                    }
                     return new RecommendDtos.RecommendItemResponse(movieSummary, it.similarity());
                 })
                 .toList();
 
         return new RecommendDtos.Response(res.version(), items, input.getId());
+    }
+
+    private void saveOrUpdateCalendarEntry(Long userId, String text, User userRef) {
+        LocalDate today = LocalDate.now();
+        CalendarEntry entry = calendarEntryRepository.findFirstByUserUserIdAndDateOrderByCreatedAtDesc(userId, today)
+                .orElseGet(() -> {
+                    log.info("Creating new CalendarEntry for userId={}, date={}", userId, today);
+                    return CalendarEntry.builder()
+                            .user(userRef)
+                            .date(today)
+                            .userInputText(text) // 생성 시에만 텍스트 설정
+                            .build();
+                });
+
+        calendarEntryRepository.save(entry);
     }
 }
