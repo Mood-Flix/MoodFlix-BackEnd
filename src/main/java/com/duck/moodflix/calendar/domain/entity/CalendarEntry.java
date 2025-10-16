@@ -84,4 +84,8 @@ public class CalendarEntry {
     public void updateUserInputText(String userInputText) {
         this.userInputText = userInputText;
     }
+
+    public void updateMovie(Movie movie) {
+        this.movie = movie;
+    }
 }

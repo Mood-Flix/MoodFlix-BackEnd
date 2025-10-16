@@ -10,13 +10,22 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CalendarEntryRepository extends JpaRepository<CalendarEntry, Long> {
-    List<CalendarEntry> findByUserUserId(Long userId);
-    Optional<CalendarEntry> findByIdAndUserUserId(Long id, Long userId);
-    Optional<CalendarEntry> findByUser_UserIdAndDate(Long userId, LocalDate date);
-    List<CalendarEntry> findByUserUserIdAndDateBetween(Long userId, LocalDate startDate, LocalDate endDate);
 
-    @Query("SELECT c FROM CalendarEntry c LEFT JOIN FETCH c.userInputText WHERE c.user.userId = :userId AND c.date = :date")
-    Optional<CalendarEntry> findByUserAndDateWithInputs(@Param("userId") Long userId, @Param("date") LocalDate date);
+    /**
+     * [N+1 최적화] LEFT JOIN FETCH로 movie 즉시 로딩
+     */
+    @Query("SELECT ce FROM CalendarEntry ce LEFT JOIN FETCH ce.movie WHERE ce.user.userId = :userId AND ce.date = :date")
+    Optional<CalendarEntry> findByUser_UserIdAndDate(@Param("userId") Long userId, @Param("date") LocalDate date);
 
-    Optional<CalendarEntry> findFirstByUserUserIdAndDateOrderByCreatedAtDesc(Long userId, LocalDate today);
+    /**
+     * [N+1 최적화] LEFT JOIN FETCH로 movie 즉시 로딩 (월별)
+     */
+    @Query("SELECT ce FROM CalendarEntry ce LEFT JOIN FETCH ce.movie WHERE ce.user.userId = :userId AND ce.date BETWEEN :startDate AND :endDate")
+    List<CalendarEntry> findByUser_UserIdAndDateBetween(@Param("userId") Long userId, @Param("startDate") LocalDate startDate, @Param("endDate") LocalDate endDate);
+
+    /**
+     * [중복 방지] 최신 엔트리 조회
+     */
+    @Query("SELECT ce FROM CalendarEntry ce LEFT JOIN FETCH ce.movie WHERE ce.user.userId = :userId AND ce.date = :date ORDER BY ce.createdAt DESC")
+    Optional<CalendarEntry> findFirstByUserUserIdAndDateOrderByCreatedAtDesc(@Param("userId") Long userId, @Param("date") LocalDate date);
 }
