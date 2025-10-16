@@ -32,13 +32,13 @@ public class CalendarWriterService {
     @Transactional
     public CalendarDtos.EntryResponse saveOrUpdateEntryBlocking(Long userId, CalendarDtos.EntryRequest req) {
         log.info("=== CalendarWriterService.saveOrUpdateEntryBlocking START ===");
-        log.info("Request: userId={}, date={}, movieId={}, note={}, moodEmoji={}",
-                userId, req.date(), req.movieId(), req.note(), req.moodEmoji());
+        // [수정] note와 moodEmoji 로그 제거
+        log.info("Request: userId={}, date={}, movieId={} (note/mood redacted)",
+                userId, req.date(), req.movieId());
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        // [수정] 올바른 Repository 메서드 사용
         Optional<CalendarEntry> existingEntryOpt = repository.findByUser_UserIdAndDate(userId, req.date());
         log.info("Existing entry found: {}", existingEntryOpt.isPresent());
 
@@ -57,15 +57,17 @@ public class CalendarWriterService {
                 log.info("No changes detected, returning existing entry");
                 return calendarMapper.toEntryResponse(existingEntry);
             } else {
-                log.info("Updating existing entry: note={}, mood={}, movieId={}",
-                        req.note(), req.moodEmoji(), req.movieId());
+                // [수정] note와 moodEmoji 로그 제거
+                log.info("Updating existing entry: movieId={} (note/mood redacted)",
+                        req.movieId());
                 existingEntry.updateNoteAndMood(req.note(), req.moodEmoji());
                 updateMovieForEntry(existingEntry, req.movieId());
                 entryToSave = existingEntry;
             }
         } else {
-            log.info("Creating NEW entry: note={}, mood={}, movieId={}",
-                    req.note(), req.moodEmoji(), req.movieId());
+            // [수정] note와 moodEmoji 로그 제거
+            log.info("Creating NEW entry: movieId={} (note/mood redacted)",
+                    req.movieId());
             CalendarEntry newEntry = CalendarEntry.builder()
                     .user(user)
                     .date(req.date())
@@ -78,7 +80,7 @@ public class CalendarWriterService {
 
         try {
             CalendarEntry savedEntry = repository.save(entryToSave);
-            log.info("✅ SAVED Successfully! Entry ID: {}", savedEntry.getId());
+            log.info(" SAVED Successfully! Entry ID: {}", savedEntry.getId());
             return calendarMapper.toEntryResponse(savedEntry);
         } catch (DataIntegrityViolationException e) {
             log.error("DB Constraint Violation: {}", e.getMessage());
