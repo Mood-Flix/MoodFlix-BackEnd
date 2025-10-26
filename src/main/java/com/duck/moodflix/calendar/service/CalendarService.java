@@ -1,10 +1,7 @@
 package com.duck.moodflix.calendar.service;
 
-import com.duck.moodflix.calendar.domain.entity.CalendarEntry;
 import com.duck.moodflix.calendar.dto.CalendarDtos;
 import com.duck.moodflix.calendar.repository.CalendarEntryRepository;
-import com.duck.moodflix.movie.repository.MovieRepository;
-import com.duck.moodflix.recommend.repository.RecommendationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
