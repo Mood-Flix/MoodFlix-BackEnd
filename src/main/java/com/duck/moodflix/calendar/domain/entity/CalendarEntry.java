@@ -5,10 +5,15 @@ import com.duck.moodflix.recommend.domain.entity.Recommendation;
 import com.duck.moodflix.users.domain.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
+@Slf4j
 @Entity
 @Table(name = "calendar_entry",
         uniqueConstraints = {
@@ -28,6 +33,9 @@ public class CalendarEntry {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(unique = true, nullable = false, updatable = false)
+    private String shareUuid; // 공유용 UUID, 자동 생성
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
@@ -39,6 +47,8 @@ public class CalendarEntry {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "recommendation_id")
     private Recommendation recommendation;
+
+    private String posterUrl;
 
     @Column(nullable = false)
     private LocalDate date;
@@ -61,10 +71,18 @@ public class CalendarEntry {
     public void prePersist() {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
+        if (shareUuid == null) {
+            shareUuid = String.valueOf(UUID.randomUUID()); // NULL일 경우 자동 생성
+            log.info("Generated shareUuid: {}", this.shareUuid); // 디버깅
+        }
     }
 
     @PreUpdate
     public void preUpdate() {
+        if (this.shareUuid == null || this.shareUuid.toString().equals("00000000-0000-0000-0000-000000000000")) {
+            this.shareUuid = String.valueOf(UUID.randomUUID());
+            log.info("PreUpdate: Fixed shareUuid: {}", this.shareUuid);
+        }
         this.updatedAt = LocalDateTime.now();
     }
 

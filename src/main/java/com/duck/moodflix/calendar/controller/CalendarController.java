@@ -7,10 +7,15 @@ import com.duck.moodflix.users.repository.UserRepository;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
@@ -39,6 +44,29 @@ public class CalendarController {
         validateYearMonth(year, month);
         return extractUserIdReactive(principal)
                 .flatMap(userId -> service.getEntriesByUserAndMonth(userId, year, month));
+    }
+
+    @GetMapping("/share/{uuid}")
+    public Mono<ResponseEntity<CalendarDtos.EntryResponse>> getSharedCalendar(
+            @PathVariable String uuid,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        Long userId = Long.parseLong(userDetails.getUsername()); // 적절한 ID 매핑 필요
+
+        return service.findByShareUuid(uuid, userId)
+                .map(entry -> {
+                    if (entry == null) {
+                        return ResponseEntity.status(HttpStatus.NOT_FOUND).body((CalendarDtos.EntryResponse) null);
+                    }
+                    return ResponseEntity.ok(entry);
+                })
+                .defaultIfEmpty(ResponseEntity.status(HttpStatus.FORBIDDEN).body((CalendarDtos.EntryResponse) null))
+                .onErrorResume(e -> {
+                    if (e instanceof SecurityException) {
+                        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).body((CalendarDtos.EntryResponse) null));
+                    }
+                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body((CalendarDtos.EntryResponse) null));
+                });
     }
 
     // 특정 날짜의 캘린더 데이터 조회

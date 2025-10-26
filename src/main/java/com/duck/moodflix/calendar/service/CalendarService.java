@@ -19,9 +19,7 @@ import reactor.core.scheduler.Schedulers;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -58,6 +56,23 @@ public class CalendarService {
                                 .orElseGet(() -> calendarMapper.createEmptyEntryResponse(userId, date))
                 )
                 .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    // [수정] shareUuid 기반 조회
+    public Mono<CalendarDtos.EntryResponse> findByShareUuid(String shareUuid, Long userId) {
+        return Mono.fromCallable(() -> {
+                    Optional<CalendarEntry> entry = repository.findByShareUuid(shareUuid);
+                    if (entry.isEmpty()) {
+                        throw new RuntimeException("Calendar entry not found for shareUuid: " + shareUuid);
+                    }
+                    CalendarEntry calendarEntry = entry.get();
+                    if (!calendarEntry.getUser().getUserId().equals(userId)) {
+                        throw new SecurityException("Unauthorized access to calendar entry");
+                    }
+                    return calendarMapper.toEntryResponse(calendarEntry);
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .onErrorMap(e -> e);
     }
 
     public Mono<CalendarDtos.EntryResponse> saveOrUpdateEntry(Long userId, CalendarDtos.EntryRequest req) {

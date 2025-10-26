@@ -42,20 +42,27 @@ public class CalendarMapper {
             );
         }
 
+        String posterUrlToUse = entry.getPosterUrl() != null ? entry.getPosterUrl() :
+                (selectedMovieResponse != null ? selectedMovieResponse.posterUrl() : null);
+
         return new CalendarDtos.EntryResponse(
-                entry.getId(), entry.getDate(), entry.getNote(), entry.getMoodEmoji(),
-                selectedMovieResponse, recommendationResponses
+                entry.getShareUuid(), // shareUuid 사용
+                entry.getDate(),
+                entry.getNote(),
+                entry.getMoodEmoji(),
+                selectedMovieResponse,
+                recommendationResponses,
+                posterUrlToUse // selectedMovie.posterUrl로 대체 가능성 제공
         );
     }
 
     /**
-     *  [수정] 당일 최신 추천 5개만 반환 (created_at DESC 정렬)
+     * [수정] 당일 최신 추천 5개만 반환 (created_at DESC 정렬)
      */
     private List<CalendarDtos.RecommendationResponse> getRecommendationResponsesBlocking(Long userId, LocalDate date) {
         LocalDateTime startOfDay = date.atStartOfDay();
         LocalDateTime endOfDay = date.atTime(23, 59, 59, 999999999);
 
-        //  [핵심 수정] created_at DESC로 최신 5개만 조회
         Pageable pageable = PageRequest.of(0, MAX_RECOMMENDATIONS, Sort.by("createdAt").descending());
 
         List<Recommendation> recommendations = recommendationRepository.findByUserUserIdAndCreatedAtBetween(
@@ -90,6 +97,6 @@ public class CalendarMapper {
     public CalendarDtos.EntryResponse createEmptyEntryResponse(Long userId, LocalDate date) {
         List<CalendarDtos.RecommendationResponse> recommendationResponses =
                 getRecommendationResponsesBlocking(userId, date);
-        return new CalendarDtos.EntryResponse(null, date, null, null, null, recommendationResponses);
+        return new CalendarDtos.EntryResponse(null, date, null, null, null, recommendationResponses, null);
     }
 }

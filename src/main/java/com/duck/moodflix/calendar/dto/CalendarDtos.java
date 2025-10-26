@@ -23,11 +23,12 @@ public class CalendarDtos {
     ) {}
 
     public record EntryResponse(
-            Long id,
+            String id,
             LocalDate date,
             String note,
             String moodEmoji,
             MovieSummaryResponse selectedMovie, // 선택된 영화 정보
-            List<RecommendationResponse> recommendations
+            List<RecommendationResponse> recommendations,
+            String posterUrl
     ) {}
 }

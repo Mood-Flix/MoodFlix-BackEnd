@@ -18,6 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -32,9 +33,7 @@ public class CalendarWriterService {
     @Transactional
     public CalendarDtos.EntryResponse saveOrUpdateEntryBlocking(Long userId, CalendarDtos.EntryRequest req) {
         log.info("=== CalendarWriterService.saveOrUpdateEntryBlocking START ===");
-        // [수정] note와 moodEmoji 로그 제거
-        log.info("Request: userId={}, date={}, movieId={} (note/mood redacted)",
-                userId, req.date(), req.movieId());
+        log.info("Request: userId={}, date={}, movieId={}", userId, req.date(), req.movieId());
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
@@ -57,30 +56,31 @@ public class CalendarWriterService {
                 log.info("No changes detected, returning existing entry");
                 return calendarMapper.toEntryResponse(existingEntry);
             } else {
-                // [수정] note와 moodEmoji 로그 제거
-                log.info("Updating existing entry: movieId={} (note/mood redacted)",
-                        req.movieId());
-                existingEntry.updateNoteAndMood(req.note(), req.moodEmoji());
+                log.info("Updating existing entry: movieId={}", req.movieId());
+                existingEntry.setNote(req.note());
+                existingEntry.setMoodEmoji(req.moodEmoji());
                 updateMovieForEntry(existingEntry, req.movieId());
+                // 무조건 새 shareUuid 생성 (기존 값 무효화 방지)
+                UUID newShareUuid = UUID.randomUUID();
+                existingEntry.setShareUuid(String.valueOf(newShareUuid));
+                log.info("Updated shareUuid for existing entry: {}", newShareUuid);
                 entryToSave = existingEntry;
             }
         } else {
-            // [수정] note와 moodEmoji 로그 제거
-            log.info("Creating NEW entry: movieId={} (note/mood redacted)",
-                    req.movieId());
+            log.info("Creating NEW entry: movieId={}", req.movieId());
             CalendarEntry newEntry = CalendarEntry.builder()
                     .user(user)
                     .date(req.date())
                     .note(req.note())
                     .moodEmoji(req.moodEmoji())
+                    .movie(movieRepository.findById(req.movieId()).orElse(null))
                     .build();
-            updateMovieForEntry(newEntry, req.movieId());
             entryToSave = newEntry;
         }
 
         try {
             CalendarEntry savedEntry = repository.save(entryToSave);
-            log.info(" SAVED Successfully! Entry ID: {}", savedEntry.getId());
+            log.info("SAVED Successfully! Entry ID: {}, shareUuid: {}", savedEntry.getId(), savedEntry.getShareUuid());
             return calendarMapper.toEntryResponse(savedEntry);
         } catch (DataIntegrityViolationException e) {
             log.error("DB Constraint Violation: {}", e.getMessage());
