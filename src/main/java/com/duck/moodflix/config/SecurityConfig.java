@@ -63,7 +63,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/users/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/recommend/**").authenticated()
-                        .requestMatchers("/api/calendar/share/**").hasAnyRole("ADMIN", "USER") // 명시적 역할 요구
+                        .requestMatchers("/api/calendar/share/**").permitAll()
                         .requestMatchers("/api/calendar/**").authenticated()
                         .requestMatchers("/api/dev/auth/**").permitAll()
                         .anyRequest().authenticated()
