@@ -9,8 +9,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -24,7 +22,7 @@ import java.util.UUID;
         })
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 @AllArgsConstructor
 @Builder // 클래스 레벨에 @Builder 적용
 public class CalendarEntry {
@@ -34,7 +32,7 @@ public class CalendarEntry {
     private Long id;
 
     @Column(unique = true, nullable = false, updatable = false)
-    private String shareUuid; // 공유용 UUID, 자동 생성
+    private String shareUuid;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -70,10 +68,11 @@ public class CalendarEntry {
     @PrePersist
     public void prePersist() {
         this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
-        if (shareUuid == null) {
-            shareUuid = String.valueOf(UUID.randomUUID()); // NULL일 경우 자동 생성
-            log.info("Generated shareUuid: {}", this.shareUuid); // 디버깅
+        if (this.shareUuid == null || this.shareUuid.trim().isEmpty()) {
+            this.shareUuid = java.util.UUID.randomUUID().toString();
+        }
+        if (this.date == null) {
+            this.date = LocalDate.from(LocalDateTime.now());
         }
     }
 
