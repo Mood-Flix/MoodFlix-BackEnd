@@ -41,9 +41,7 @@ public class CalendarMapper {
                     movie.getGenre(), movie.getReleaseDate(), movie.getVoteAverage()
             );
         }
-
-        String posterUrlToUse = entry.getPosterUrl() != null ? entry.getPosterUrl() :
-                (selectedMovieResponse != null ? selectedMovieResponse.posterUrl() : null);
+        String posterUrlToUse = selectedMovieResponse != null ? selectedMovieResponse.posterUrl() : null;
 
         // [수정] DTO 생성자 호출 방식 변경
         return new CalendarDtos.EntryResponse(

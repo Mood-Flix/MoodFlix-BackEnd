@@ -46,8 +46,6 @@ public class CalendarEntry {
     @JoinColumn(name = "recommendation_id")
     private Recommendation recommendation;
 
-    private String posterUrl;
-
     @Column(nullable = false)
     private LocalDate date;
 
