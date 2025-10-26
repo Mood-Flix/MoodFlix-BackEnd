@@ -7,7 +7,9 @@ import com.duck.moodflix.movie.repository.MovieRepository;
 import com.duck.moodflix.recommend.repository.RecommendationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -22,8 +24,6 @@ import java.util.stream.Collectors;
 public class CalendarService {
 
     private final CalendarEntryRepository repository;
-    private final RecommendationRepository recommendationRepository;
-    private final MovieRepository movieRepository;
     private final CalendarMapper calendarMapper;
     private final CalendarWriterService writerService;
 
@@ -51,18 +51,17 @@ public class CalendarService {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    // [수정] shareUuid 기반 조회
+    //shareUuid 기반 조회, 공유 링크로 모든 인증 사용자 접근 가능
     public Mono<CalendarDtos.EntryResponse> findByShareUuid(String shareUuid) {
         return Mono.fromCallable(() -> {
-                    Optional<CalendarEntry> entry = repository.findByShareUuid(shareUuid);
-                    if (entry.isEmpty()) {
-                        throw new RuntimeException("Calendar entry not found for shareUuid: " + shareUuid);
+                    if (shareUuid == null || shareUuid.trim().isEmpty()) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid shareUuid");
                     }
-                    CalendarEntry calendarEntry = entry.get();
-                    return calendarMapper.toEntryResponse(calendarEntry);
+                    return repository.findByShareUuid(shareUuid)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Calendar entry not found for shareUuid: " + shareUuid));
                 })
-                .subscribeOn(Schedulers.boundedElastic())
-                .onErrorMap(e -> e);
+                .map(calendarEntry -> calendarMapper.toEntryResponse(calendarEntry))
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     public Mono<CalendarDtos.EntryResponse> saveOrUpdateEntry(Long userId, CalendarDtos.EntryRequest req) {

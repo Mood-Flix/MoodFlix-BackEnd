@@ -47,22 +47,16 @@ public class CalendarController {
     }
 
     @GetMapping("/share/{uuid}")
-    public Mono<ResponseEntity<CalendarDtos.EntryResponse>> getSharedCalendar(
-            @PathVariable String uuid) {
-
+    public Mono<ResponseEntity<CalendarDtos.EntryResponse>> getSharedCalendar(@PathVariable String uuid) {
         return service.findByShareUuid(uuid)
-                .map(entry -> {
-                    if (entry == null) {
-                        return ResponseEntity.status(HttpStatus.NOT_FOUND).body((CalendarDtos.EntryResponse) null);
-                    }
-                    return ResponseEntity.ok(entry);
-                })
-                .defaultIfEmpty(ResponseEntity.status(HttpStatus.FORBIDDEN).body((CalendarDtos.EntryResponse) null))
+                .map(ResponseEntity::ok)
+                .defaultIfEmpty(ResponseEntity.status(404).body(null))
                 .onErrorResume(e -> {
-                    if (e instanceof SecurityException) {
-                        return Mono.just(ResponseEntity.status(HttpStatus.FORBIDDEN).body((CalendarDtos.EntryResponse) null));
+                    if (e instanceof ResponseStatusException) {
+                        ResponseStatusException ex = (ResponseStatusException) e;
+                        return Mono.just(ResponseEntity.status(ex.getStatusCode()).body(null));
                     }
-                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body((CalendarDtos.EntryResponse) null));
+                    return Mono.just(ResponseEntity.status(500).body(null));
                 });
     }
 
