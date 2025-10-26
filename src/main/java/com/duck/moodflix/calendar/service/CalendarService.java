@@ -13,6 +13,7 @@ import reactor.core.scheduler.Schedulers;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -48,16 +49,23 @@ public class CalendarService {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    //shareUuid 기반 조회, 공유 링크로 모든 인증 사용자 접근 가능
+    // shareUuid 기반 조회
     public Mono<CalendarDtos.EntryResponse> findByShareUuid(String shareUuid) {
         return Mono.fromCallable(() -> {
                     if (shareUuid == null || shareUuid.trim().isEmpty()) {
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid shareUuid");
                     }
+                    // [추가] DB 조회 전 UUID 형식 검증
+                    try {
+                        UUID.fromString(shareUuid);
+                    } catch (IllegalArgumentException e) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid shareUuid format");
+                    }
                     return repository.findByShareUuid(shareUuid)
                             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Calendar entry not found for shareUuid: " + shareUuid));
                 })
-                .map(calendarEntry -> calendarMapper.toEntryResponse(calendarEntry))
+                // [수정] 람다 -> 메서드 참조로 변경
+                .map(calendarMapper::toEntryResponse)
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
