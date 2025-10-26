@@ -66,11 +66,9 @@ public class CalendarEntry {
     @PrePersist
     public void prePersist() {
         this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
         if (this.shareUuid == null || this.shareUuid.trim().isEmpty()) {
             this.shareUuid = java.util.UUID.randomUUID().toString();
-        }
-        if (this.date == null) {
-            this.date = LocalDate.from(LocalDateTime.now());
         }
     }
 
