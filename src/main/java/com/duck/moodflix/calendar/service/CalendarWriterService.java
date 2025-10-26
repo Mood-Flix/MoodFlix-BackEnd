@@ -9,14 +9,12 @@ import com.duck.moodflix.users.domain.entity.User;
 import com.duck.moodflix.users.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
-import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -30,65 +28,43 @@ public class CalendarWriterService {
     private final CalendarMapper calendarMapper;
 
     @Transactional
+    // 1. 메서드 시그니처를 CalendarService의 호출에 맞게 수정 (이름 + 파라미터)
     public CalendarDtos.EntryResponse saveOrUpdateEntryBlocking(Long userId, CalendarDtos.EntryRequest req) {
-        log.info("=== CalendarWriterService.saveOrUpdateEntryBlocking START ===");
-        // [수정] note와 moodEmoji 로그 제거
-        log.info("Request: userId={}, date={}, movieId={} (note/mood redacted)",
-                userId, req.date(), req.movieId());
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-
-        Optional<CalendarEntry> existingEntryOpt = repository.findByUser_UserIdAndDate(userId, req.date());
-        log.info("Existing entry found: {}", existingEntryOpt.isPresent());
-
+        // 2. req.id() 대신 (userId, req.date())로 기존 항목을 찾아야 합니다.
+        Optional<CalendarEntry> existingEntry = repository.findByUser_UserIdAndDate(userId, req.date());
         CalendarEntry entryToSave;
 
-        if (existingEntryOpt.isPresent()) {
-            CalendarEntry existingEntry = existingEntryOpt.get();
-            boolean isNoteSame = Objects.equals(existingEntry.getNote(), req.note());
-            boolean isMoodSame = Objects.equals(existingEntry.getMoodEmoji(), req.moodEmoji());
-            boolean isMovieSame = Objects.equals(
-                    existingEntry.getMovie() != null ? existingEntry.getMovie().getId() : null,
-                    req.movieId()
-            );
+        if (existingEntry.isPresent()) {
+            // [업데이트]
+            log.info("Updating existing entry: date={}, movieId={}", req.date(), req.movieId());
+            entryToSave = existingEntry.get();
+            entryToSave.setNote(req.note());
+            entryToSave.setMoodEmoji(req.moodEmoji());
+            updateMovieForEntry(entryToSave, req.movieId());
 
-            if (isNoteSame && isMoodSame && isMovieSame) {
-                log.info("No changes detected, returning existing entry");
-                return calendarMapper.toEntryResponse(existingEntry);
-            } else {
-                // [수정] note와 moodEmoji 로그 제거
-                log.info("Updating existing entry: movieId={} (note/mood redacted)",
-                        req.movieId());
-                existingEntry.updateNoteAndMood(req.note(), req.moodEmoji());
-                updateMovieForEntry(existingEntry, req.movieId());
-                entryToSave = existingEntry;
-            }
         } else {
-            // [수정] note와 moodEmoji 로그 제거
-            log.info("Creating NEW entry: movieId={} (note/mood redacted)",
-                    req.movieId());
-            CalendarEntry newEntry = CalendarEntry.builder()
-                    .user(user)
-                    .date(req.date())
-                    .note(req.note())
-                    .moodEmoji(req.moodEmoji())
-                    .build();
-            updateMovieForEntry(newEntry, req.movieId());
-            entryToSave = newEntry;
+            // [새로 생성]
+            log.info("Creating new entry: date={}, movieId={}", req.date(), req.movieId());
+
+            // 3. (필수) User 엔티티를 조회
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId));
+
+            entryToSave = new CalendarEntry();
+
+            // 4. (필수) User와 Date를 설정
+            entryToSave.setUser(user);
+            entryToSave.setDate(req.date());
+
+            entryToSave.setNote(req.note());
+            entryToSave.setMoodEmoji(req.moodEmoji());
+            updateMovieForEntry(entryToSave, req.movieId());
+            // PrePersist에서 shareUuid 자동 생성
         }
 
-        try {
-            CalendarEntry savedEntry = repository.save(entryToSave);
-            log.info(" SAVED Successfully! Entry ID: {}", savedEntry.getId());
-            return calendarMapper.toEntryResponse(savedEntry);
-        } catch (DataIntegrityViolationException e) {
-            log.error("DB Constraint Violation: {}", e.getMessage());
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate calendar entry", e);
-        } catch (Exception e) {
-            log.error("Save Failed: {}", e.getMessage(), e);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save entry", e);
-        }
+        entryToSave = repository.save(entryToSave);
+        return calendarMapper.toEntryResponse(entryToSave);
     }
 
     @Transactional

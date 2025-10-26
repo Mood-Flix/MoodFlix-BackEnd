@@ -28,4 +28,11 @@ public interface CalendarEntryRepository extends JpaRepository<CalendarEntry, Lo
      */
     @Query("SELECT ce FROM CalendarEntry ce LEFT JOIN FETCH ce.movie WHERE ce.user.userId = :userId AND ce.date = :date ORDER BY ce.createdAt DESC")
     Optional<CalendarEntry> findFirstByUserUserIdAndDateOrderByCreatedAtDesc(@Param("userId") Long userId, @Param("date") LocalDate date);
+
+    @Query("SELECT ce FROM CalendarEntry ce " +
+            "LEFT JOIN FETCH ce.movie " +
+            "LEFT JOIN FETCH ce.recommendation r " + // recommendation 필드명으로 가정
+            "LEFT JOIN FETCH r.userEmotionInput " + // recommendation의 userEmotionInput 필드명으로 가정
+            "WHERE ce.shareUuid = :shareUuid")
+    Optional<CalendarEntry> findByShareUuid(@Param("shareUuid") String shareUuid);
 }

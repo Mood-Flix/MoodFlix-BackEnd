@@ -5,10 +5,13 @@ import com.duck.moodflix.recommend.domain.entity.Recommendation;
 import com.duck.moodflix.users.domain.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
+@Slf4j
 @Entity
 @Table(name = "calendar_entry",
         uniqueConstraints = {
@@ -19,7 +22,7 @@ import java.time.LocalDateTime;
         })
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 @AllArgsConstructor
 @Builder // 클래스 레벨에 @Builder 적용
 public class CalendarEntry {
@@ -27,6 +30,9 @@ public class CalendarEntry {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(unique = true, nullable = false, updatable = false)
+    private String shareUuid;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -61,6 +67,9 @@ public class CalendarEntry {
     public void prePersist() {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
+        if (this.shareUuid == null || this.shareUuid.trim().isEmpty()) {
+            this.shareUuid = java.util.UUID.randomUUID().toString();
+        }
     }
 
     @PreUpdate

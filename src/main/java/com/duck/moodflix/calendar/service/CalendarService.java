@@ -1,28 +1,19 @@
 package com.duck.moodflix.calendar.service;
 
-import com.duck.moodflix.calendar.domain.entity.CalendarEntry;
 import com.duck.moodflix.calendar.dto.CalendarDtos;
 import com.duck.moodflix.calendar.repository.CalendarEntryRepository;
-import com.duck.moodflix.movie.domain.entity.Movie;
-import com.duck.moodflix.movie.dto.response.MovieSummaryResponse;
-import com.duck.moodflix.movie.repository.MovieRepository;
-import com.duck.moodflix.recommend.domain.entity.Recommendation;
-import com.duck.moodflix.recommend.repository.RecommendationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.YearMonth;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -31,8 +22,6 @@ import java.util.stream.Collectors;
 public class CalendarService {
 
     private final CalendarEntryRepository repository;
-    private final RecommendationRepository recommendationRepository;
-    private final MovieRepository movieRepository;
     private final CalendarMapper calendarMapper;
     private final CalendarWriterService writerService;
 
@@ -57,6 +46,26 @@ public class CalendarService {
                                 .map(calendarMapper::toEntryResponse)
                                 .orElseGet(() -> calendarMapper.createEmptyEntryResponse(userId, date))
                 )
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    // shareUuid 기반 조회
+    public Mono<CalendarDtos.EntryResponse> findByShareUuid(String shareUuid) {
+        return Mono.fromCallable(() -> {
+                    if (shareUuid == null || shareUuid.trim().isEmpty()) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid shareUuid");
+                    }
+                    // [추가] DB 조회 전 UUID 형식 검증
+                    try {
+                        UUID.fromString(shareUuid);
+                    } catch (IllegalArgumentException e) {
+                        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid shareUuid format");
+                    }
+                    return repository.findByShareUuid(shareUuid)
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Calendar entry not found for shareUuid: " + shareUuid));
+                })
+                // [수정] 람다 -> 메서드 참조로 변경
+                .map(calendarMapper::toEntryResponse)
                 .subscribeOn(Schedulers.boundedElastic());
     }
 

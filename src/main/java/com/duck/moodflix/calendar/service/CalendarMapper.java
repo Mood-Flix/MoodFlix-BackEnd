@@ -41,21 +41,28 @@ public class CalendarMapper {
                     movie.getGenre(), movie.getReleaseDate(), movie.getVoteAverage()
             );
         }
+        String posterUrlToUse = selectedMovieResponse != null ? selectedMovieResponse.posterUrl() : null;
 
+        // [수정] DTO 생성자 호출 방식 변경
         return new CalendarDtos.EntryResponse(
-                entry.getId(), entry.getDate(), entry.getNote(), entry.getMoodEmoji(),
-                selectedMovieResponse, recommendationResponses
+                entry.getId(),           // 1. Long id (DB PK)
+                entry.getShareUuid(),    // 2. String shareUuid
+                entry.getDate(),
+                entry.getNote(),
+                entry.getMoodEmoji(),
+                selectedMovieResponse,
+                recommendationResponses,
+                posterUrlToUse
         );
     }
 
     /**
-     *  [수정] 당일 최신 추천 5개만 반환 (created_at DESC 정렬)
+     * [수정] 당일 최신 추천 5개만 반환 (created_at DESC 정렬)
      */
     private List<CalendarDtos.RecommendationResponse> getRecommendationResponsesBlocking(Long userId, LocalDate date) {
         LocalDateTime startOfDay = date.atStartOfDay();
         LocalDateTime endOfDay = date.atTime(23, 59, 59, 999999999);
 
-        //  [핵심 수정] created_at DESC로 최신 5개만 조회
         Pageable pageable = PageRequest.of(0, MAX_RECOMMENDATIONS, Sort.by("createdAt").descending());
 
         List<Recommendation> recommendations = recommendationRepository.findByUserUserIdAndCreatedAtBetween(
@@ -90,6 +97,17 @@ public class CalendarMapper {
     public CalendarDtos.EntryResponse createEmptyEntryResponse(Long userId, LocalDate date) {
         List<CalendarDtos.RecommendationResponse> recommendationResponses =
                 getRecommendationResponsesBlocking(userId, date);
-        return new CalendarDtos.EntryResponse(null, date, null, null, null, recommendationResponses);
+
+        // [수정] DTO 생성자 호출 방식 변경 (id: null, shareUuid: null)
+        return new CalendarDtos.EntryResponse(
+                null,
+                null,
+                date,
+                null,
+                null,
+                null,
+                recommendationResponses,
+                null
+        );
     }
 }

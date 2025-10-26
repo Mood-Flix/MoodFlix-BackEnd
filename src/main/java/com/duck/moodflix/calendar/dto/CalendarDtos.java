@@ -1,7 +1,6 @@
 package com.duck.moodflix.calendar.dto;
 
 import com.duck.moodflix.movie.dto.response.MovieSummaryResponse;
-
 import java.time.LocalDate;
 import java.util.List;
 
@@ -24,10 +23,12 @@ public class CalendarDtos {
 
     public record EntryResponse(
             Long id,
+            String shareUuid,
             LocalDate date,
             String note,
             String moodEmoji,
             MovieSummaryResponse selectedMovie, // 선택된 영화 정보
-            List<RecommendationResponse> recommendations
+            List<RecommendationResponse> recommendations,
+            String posterUrl
     ) {}
 }
