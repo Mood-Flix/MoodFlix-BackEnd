@@ -48,12 +48,9 @@ public class CalendarController {
 
     @GetMapping("/share/{uuid}")
     public Mono<ResponseEntity<CalendarDtos.EntryResponse>> getSharedCalendar(
-            @PathVariable String uuid,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @PathVariable String uuid) {
 
-        Long userId = Long.parseLong(userDetails.getUsername()); // 적절한 ID 매핑 필요
-
-        return service.findByShareUuid(uuid, userId)
+        return service.findByShareUuid(uuid)
                 .map(entry -> {
                     if (entry == null) {
                         return ResponseEntity.status(HttpStatus.NOT_FOUND).body((CalendarDtos.EntryResponse) null);

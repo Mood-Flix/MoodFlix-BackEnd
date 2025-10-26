@@ -3,24 +3,17 @@ package com.duck.moodflix.calendar.service;
 import com.duck.moodflix.calendar.domain.entity.CalendarEntry;
 import com.duck.moodflix.calendar.dto.CalendarDtos;
 import com.duck.moodflix.calendar.repository.CalendarEntryRepository;
-import com.duck.moodflix.movie.domain.entity.Movie;
-import com.duck.moodflix.movie.dto.response.MovieSummaryResponse;
 import com.duck.moodflix.movie.repository.MovieRepository;
-import com.duck.moodflix.recommend.domain.entity.Recommendation;
 import com.duck.moodflix.recommend.repository.RecommendationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.*;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -59,16 +52,13 @@ public class CalendarService {
     }
 
     // [수정] shareUuid 기반 조회
-    public Mono<CalendarDtos.EntryResponse> findByShareUuid(String shareUuid, Long userId) {
+    public Mono<CalendarDtos.EntryResponse> findByShareUuid(String shareUuid) {
         return Mono.fromCallable(() -> {
                     Optional<CalendarEntry> entry = repository.findByShareUuid(shareUuid);
                     if (entry.isEmpty()) {
                         throw new RuntimeException("Calendar entry not found for shareUuid: " + shareUuid);
                     }
                     CalendarEntry calendarEntry = entry.get();
-                    if (!calendarEntry.getUser().getUserId().equals(userId)) {
-                        throw new SecurityException("Unauthorized access to calendar entry");
-                    }
                     return calendarMapper.toEntryResponse(calendarEntry);
                 })
                 .subscribeOn(Schedulers.boundedElastic())
