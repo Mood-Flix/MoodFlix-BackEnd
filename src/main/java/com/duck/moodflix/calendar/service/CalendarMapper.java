@@ -45,14 +45,16 @@ public class CalendarMapper {
         String posterUrlToUse = entry.getPosterUrl() != null ? entry.getPosterUrl() :
                 (selectedMovieResponse != null ? selectedMovieResponse.posterUrl() : null);
 
+        // [수정] DTO 생성자 호출 방식 변경
         return new CalendarDtos.EntryResponse(
-                entry.getShareUuid(), // shareUuid 사용
+                entry.getId(),           // 1. Long id (DB PK)
+                entry.getShareUuid(),    // 2. String shareUuid
                 entry.getDate(),
                 entry.getNote(),
                 entry.getMoodEmoji(),
                 selectedMovieResponse,
                 recommendationResponses,
-                posterUrlToUse // selectedMovie.posterUrl로 대체 가능성 제공
+                posterUrlToUse
         );
     }
 
@@ -97,6 +99,17 @@ public class CalendarMapper {
     public CalendarDtos.EntryResponse createEmptyEntryResponse(Long userId, LocalDate date) {
         List<CalendarDtos.RecommendationResponse> recommendationResponses =
                 getRecommendationResponsesBlocking(userId, date);
-        return new CalendarDtos.EntryResponse(null, date, null, null, null, recommendationResponses, null);
+
+        // [수정] DTO 생성자 호출 방식 변경 (id: null, shareUuid: null)
+        return new CalendarDtos.EntryResponse(
+                null,
+                null,
+                date,
+                null,
+                null,
+                null,
+                recommendationResponses,
+                null
+        );
     }
 }
