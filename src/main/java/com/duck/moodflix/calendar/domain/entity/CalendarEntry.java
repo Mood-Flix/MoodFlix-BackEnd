@@ -74,10 +74,6 @@ public class CalendarEntry {
 
     @PreUpdate
     public void preUpdate() {
-        if (this.shareUuid == null || this.shareUuid.toString().equals("00000000-0000-0000-0000-000000000000")) {
-            this.shareUuid = String.valueOf(UUID.randomUUID());
-            log.info("PreUpdate: Fixed shareUuid: {}", this.shareUuid);
-        }
         this.updatedAt = LocalDateTime.now();
     }
 
