@@ -4,6 +4,9 @@ import com.duck.moodflix.calendar.dto.CalendarDtos;
 import com.duck.moodflix.calendar.service.CalendarService;
 import com.duck.moodflix.users.domain.entity.enums.UserStatus;
 import com.duck.moodflix.users.repository.UserRepository;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,17 +45,28 @@ public class CalendarController {
                 .flatMap(userId -> service.getEntriesByUserAndMonth(userId, year, month));
     }
 
+    /**
+     * [수정] 캘린더 항목 공유 조회 (비인증 사용자 접근 가능하도록 SecurityConfig에서 열어줘야 함)
+     * - @AuthenticationPrincipal 제거
+     * - 에러 핸들링 로직 개선 (switchIfEmpty, onErrorResume)
+     */
+    @Operation(summary = "공유 UUID로 캘린더 항목 조회", description = "공유된 UUID를 기반으로 특정 캘린더 항목을 조회합니다. (인증 불필요)",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "조회 성공"),
+                    @ApiResponse(responseCode = "404", description = "항목을 찾을 수 없음"),
+                    @ApiResponse(responseCode = "500", description = "서버 오류")
+            })
     @GetMapping("/share/{uuid}")
-    public Mono<ResponseEntity<CalendarDtos.EntryResponse>> getSharedCalendar(@PathVariable String uuid) {
+    public Mono<ResponseEntity<CalendarDtos.EntryResponse>> getSharedCalendar(
+            @Parameter(description = "공유용 UUID", required = true) @PathVariable String uuid) {
+
         return service.findByShareUuid(uuid)
-                .map(ResponseEntity::ok)
-                .defaultIfEmpty(ResponseEntity.status(404).body(null))
+                .map(ResponseEntity::ok) // 성공 시 200 OK와 entry 반환
+                .switchIfEmpty(Mono.just(ResponseEntity.status(HttpStatus.NOT_FOUND).build())) // 비어있으면 404
                 .onErrorResume(e -> {
-                    if (e instanceof ResponseStatusException) {
-                        ResponseStatusException ex = (ResponseStatusException) e;
-                        return Mono.just(ResponseEntity.status(ex.getStatusCode()).body(null));
-                    }
-                    return Mono.just(ResponseEntity.status(500).body(null));
+                    // 에러 발생 시 로그를 남기고 500 반환
+                    log.error("Error fetching shared calendar: uuid={}", uuid, e);
+                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build());
                 });
     }
 
