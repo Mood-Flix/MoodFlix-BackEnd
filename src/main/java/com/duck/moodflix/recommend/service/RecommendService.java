@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
 public class RecommendService {
 
     private static final Logger log = LoggerFactory.getLogger(RecommendService.class);
-    private static final int MAX_DAILY_RECOMMENDATIONS = 5;
+    private static final int MAX_DAILY_RECOMMENDATIONS = 100;
 
     private final ModelServerClient modelClient;
     private final UserEmotionInputRepository inputRepo;
